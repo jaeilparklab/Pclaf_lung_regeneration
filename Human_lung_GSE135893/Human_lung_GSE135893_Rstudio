@@ -1,4 +1,3 @@
-Human_lung_GSE135893/
 
 library(Seurat)
 library(dplyr)
