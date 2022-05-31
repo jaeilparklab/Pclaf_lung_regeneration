@@ -1,3 +1,4 @@
+Human_lung_GSE135893/
 
 library(Seurat)
 library(dplyr)
@@ -260,8 +261,3 @@ DoHeatmap(
   group.colors = NULL,
   draw.lines = TRUE,
   combine = TRUE,) + scale_fill_gradient2( low = rev(c('#d1e5f0','#67a9cf','#2166ac')), mid = "white", high = rev(c('#b2182b','#ef8a62','#fddbc7')), guide = "colourbar", aesthetics = "fill")
-
-
-##
-
-
