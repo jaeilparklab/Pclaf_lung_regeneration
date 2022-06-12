@@ -1,0 +1,245 @@
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(sva)
+library(genefilter)
+library(BiocParallel)
+library(patchwork)
+library(ggplot2)
+
+##===================================
+## Read data and processing
+##===================================
+
+bipolar_dge = readMM("/Users/bkim6/Desktop/R/Natcomm/GSE141259_HighResolution_rawcounts.mtx")
+# read in the gene names (row names)
+gene_names = readLines("/Users/bkim6/Desktop/R/Natcomm/GSE141259_HighResolution_genes.txt")
+barcode_names = readLines("/Users/bkim6/Desktop/R/Natcomm/GSE141259_HighResolution_barcodes.txt")
+# assign row and column names for our sparse matrix
+rownames(bipolar_dge) = gene_names
+colnames(bipolar_dge) = barcode_names
+
+lung <- CreateSeuratObject(counts = bipolar_dge, project = "lung", min.cells = 3, min.features = 200)
+
+dense.size <- object.size(as.matrix(bipolar_dge))
+
+dense.size
+
+sparse.size <- object.size(bipolar_dge)
+
+sparse.size
+
+dense.size/sparse.size
+
+lung <- NormalizeData(lung, normalization.method = "LogNormalize", scale.factor = 10000)
+
+lung <- NormalizeData(lung)
+
+lung <- FindVariableFeatures(lung, selection.method = "vst", nfeatures = 3000)
+all.genes <- rownames(lung)
+lung <- ScaleData(lung, features = all.genes)
+lung <- RunPCA(lung, features = VariableFeatures(object = lung))
+
+lung <- JackStraw(lung, num.replicate = 100)
+lung <- ScoreJackStraw(lung, dims = 1:20)
+
+JackStrawPlot(lung, dims = 1:15)
+ElbowPlot(lung)
+
+lung <- FindNeighbors(lung, dims = 1:10)
+lung <- FindClusters(lung, resolution = 2)
+
+lung <- RunUMAP(lung, dims = 1:10)
+DimPlot(lung, reduction = "umap")
+
+##===================================
+## Marker gene isolation & annotation
+##===================================
+
+
+gene_list_marker <- c("Ager", "Cldn18", "Sftpc", "Sftpa1", "Krt8", "Krt15", "Rpl13", "Sec14l3", "Ccdc153", "Scgb1a1", "Hp", "Scgb3a2")
+gene_list_marker2 <- c("Resp18", "Calca", "Hmgb2", "2700094K13Rik", "Lcn2", "Npc2", "Tppp3", "Ccdc153", "Cd24a", "Hp", "Retnla", "Cyp2f2")
+gene_list_marker3 <- c("Ager","Cldn18", "Sftpc", "Foxj1", "Ccdc153", "Scgb1a1", "Scgb3a2", "Scgb3a1", "Reg3g", "Chga", "Calca", "Krt5", "Trp63", "Cd200", "Itgb4")
+gene_list_marker4 <- c("Scgb1a1", "Scgb3a2", "Scgb3a1", "Rpl13", "Rpl23", "Rpl10", "Rpl32")
+gene_list_marker5 <- c("Sec14l3", "Ccdc153", "Fth1", "S100a11", "Rfk")
+gene_list_marker6 <- c("Krt8", "Nupr1", "Sra1")
+gene_list_marker7 <- c("2810417H13Rik", "Mki67", "Hmmr")
+gene_list_marker8 <- c("Calca", "Chga", "Chgb")
+
+#AT1 or AT2
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker,
+        pt.size = 0) + NoLegend()
+
+#
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker2,
+        pt.size = 0) + NoLegend()
+
+#For activating Club cells
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker4,
+        pt.size = 0) + NoLegend()
+
+#For activating Ciliated cells
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker5,
+        pt.size = 0) + NoLegend()
+
+#For activating Krt8+ cells
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker6,
+        pt.size = 0) + NoLegend()
+
+#For activating Proliferation cells
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker7,
+        pt.size = 0) + NoLegend()
+
+#For Neuroendocrine cells
+VlnPlot(object = lung, 
+        ncol = 1,
+        features = gene_list_marker8,
+        pt.size = 0) + NoLegend()
+        
+        
+#AT1 14
+lung@meta.data$cell_type <- lung@meta.data$seurat_clusters
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("14"),
+                                            to= c("AT1"))
+#Krt8+ 6, 9
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("6", "9"),
+                                            to= c("Krt8+", "Krt8+"))
+
+#Activated AT2 1, 2, 23, 24
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("1", "2", "23", "24"),
+                                            to= c("Activated AT2", "Activated AT2", "Activated AT2", "Activated AT2"))
+
+#Hopx+ 16, 32
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("16", "32"),
+                                            to= c("Hopx+", "Hopx+"))
+
+#AT2 0, 3, 5, 11
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("0", "3", "5", "11"),
+                                            to= c("AT2", "AT2", "AT2", "AT2"))
+#PPC 29, 35
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("29", "35"),
+                                            to= c("PPC", "PPC"))
+
+#PPC_club 33
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("33"),
+                                            to= c("PPC_club"))
+
+#PPC_AT2 26
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("26"),
+                                            to= c("PPC_AT2"))
+
+#Neuroendocrine
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("13"),
+                                            to= c("Neuroendocrine"))
+
+#Basal 31
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("31"),
+                                            to= c("Basal"))
+
+#Club 4, 12, 21, 28
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("4", "12", "21", "28"),
+                                            to= c("Club", "Club", "Club", "Club"))
+
+#Activated Club 15, 22, 30
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("15", "22", "30"),
+                                            to= c("Activated Club", "Activated Club", "Activated Club"))
+
+#Goblet 19
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("19"),
+                                            to= c("Goblet"))
+
+#Ciliated 7, 17, 18
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("7", "17", "18"),
+                                            to= c("Ciliated", "Ciliated", "Ciliated"))
+
+#Activated Ciliated 8 20 25 27
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("8", "20", "25", "27"),
+                                            to= c("Activated Ciliated", "Activated Ciliated", "Activated Ciliated", "Activated Ciliated"))
+
+#Club to Ciliated 10 34 36
+lung@meta.data$cell_type <- plyr::mapvalues(x= lung@meta.data$cell_type,
+                                            from=c("10", "34", "36"),
+                                            to= c("Club to Ciliated", "Club to Ciliated", "Club to Ciliated"))
+
+Idents(lung) <- "cell_type"
+DimPlot(lung)
+
+
+
+
+my_levels <- c("AT1", "Activated AT2", "Krt8+", "AT2", "Club", "Activated Club", "Club to Ciliated", "Ciliated", "Activated Ciliated", "Neuroendocrine", "Goblet", "Proliferation", "Basal")
+
+lung@meta.data$cell_type2 <- factor(x = lung@meta.data$cell_type, levels = my_levels)
+
+Idents(lung) <- "cell_type2"
+
+DimPlot(lung, pt.size = 0.2)
+
+DotPlot(lung, features = c("2810417H13Rik", "Mki67", "Ager","Cldn18", "Sftpc","Sftpa1", "Krt8", "Scgb1a1", "Scgb3a2", "Foxj1", "Ccdc153", "Scgb3a1", "Reg3g", "Chga", "Calca", "Krt5", "Trp63", "Cd200", "Itgb4"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
+
+
+lung_marker <- FindAllMarkers(lung, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.1)
+lung_marker %>% group_by(cluster) %>% top_n(n = 1000, wt = avg_log2FC)
+
+
+library(openxlsx)
+write.xlsx(lung_marker, file = "lung_markers_natcomm.xlsx")
+
+  
+##===================================
+## Dpi of bleomycin
+##===================================
+
+
+##bleoID
+lung@meta.data$bleoID <- lung@meta.data$orig.ident
+lung@meta.data$bleoID <- plyr::mapvalues(x= lung@meta.data$bleoID,
+                                         from=c("muc9265","muc9267", "muc9268","muc9269", "muc9270", "muc9271", "muc9272", "muc9273", "muc9274","muc9275","muc9276", "muc9277", "muc9278", "muc9279", "muc9280", "muc9281", "muc9282", "muc9283", "muc9284", "muc9285", "muc9286", "muc9287", "muc9288", "muc9289", "muc9290", "muc9291", "muc9292", "muc9293", "muc9294", "muc9295", "muc9296", "muc9297"),
+                                         to= c("d36_1","d7_1", "d11_1", "d9_1", "d8_1", "d0_1", "d7_2","d3_1", "d2_1", "d4_1", "d15_1", "d11_2", "d5_1", "d54_1", "d15_2", "d36_2", "d6_1", "d12_1","d2_2", "d10_1","d21_1","d0_2","d13_1", "d4_2","d5_2","d8_2","d3_2","d10_2","d12_2","d9_2","d13_2","d28_1"))
+
+Idents(object = lung) <- "bleoID"
+DimPlot(lung, label = F)
+
+lung@meta.data$bleoID_simple <- lung@meta.data$bleoID
+lung@meta.data$bleoID_simple <- plyr::mapvalues(x= lung@meta.data$bleoID_simple,
+                                                from=c("d36_1","d7_1", "d11_1", "d9_1", "d8_1", "d0_1", "d7_2","d3_1", "d2_1", "d4_1", "d15_1", "d11_2", "d5_1", "d54_1", "d15_2", "d36_2", "d6_1", "d12_1","d2_2", "d10_1","d21_1","d0_2","d13_1", "d4_2","d5_2","d8_2","d3_2","d10_2","d12_2","d9_2","d13_2","d28_1"),
+                                                to= c("d36","d7", "d11", "d9", "d8", "d0", "d7","d3", "d2", "d4", "d15", "d11", "d5", "d54", "d15", "d36", "d6", "d12","d2", "d10","d21","d0","d13", "d4","d5","d8","d3","d10","d12","d9","d13","d28"))
+
+
+Idents(object = lung) <- "bleoID_simple"
+DimPlot(lung, label = F)
+levels(lung) <- c("d0", "d2" , "d3", "d4", "d5","d6", "d7","d8", "d9", "d10","d11","d12","d13","d15","d21","d28", "d36", "d54")
+DimPlot(lung, label = F)
+
+FeaturePlot(lung, split.by = "bleoID_simple", features = c("2810417H13Rik"), pt.size = 0.2)
+
+##===================================
+## DREAM target genes
+##===================================
