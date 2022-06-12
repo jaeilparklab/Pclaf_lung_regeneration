@@ -241,5 +241,9 @@ DimPlot(lung, label = F)
 FeaturePlot(lung, split.by = "bleoID_simple", features = c("2810417H13Rik"), pt.size = 0.2)
 
 ##===================================
-## DREAM target genes
+## DREAM target genes module score
 ##===================================
+
+lung_DREAM <- AddModuleScore(object = lung, features = gene_list_DREAM, name = "DREAM_score")
+
+DotPlot(lung_DREAM, features = "DREAM_score1", cols = "RdYlBu", scale.min = 0) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
