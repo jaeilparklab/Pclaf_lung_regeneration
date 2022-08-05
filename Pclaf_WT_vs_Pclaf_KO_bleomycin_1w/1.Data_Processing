@@ -96,3 +96,135 @@ FeaturePlot(Epi, features = "Epcam")
 
 saveRDS(Epi, file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi.rds")
 Epi <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi.rds")
+
+##Epithelial subset processing
+Epi <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi.rds")
+
+Epi <- RunPCA(Epi, features = VariableFeatures(object = Epi))
+Epi <- JackStraw(Epi, num.replicate = 100)
+Epi <- ScoreJackStraw(Epi, dims = 1:20)
+JackStrawPlot(Epi, dims = 1:15)
+
+Epi <- FindNeighbors(Epi, dims = 1:20)
+Epi <- FindClusters(Epi, resolution = 1)
+Epi <- RunUMAP(Epi, dims = 1:20)
+DimPlot(Epi, reduction = "umap", label = TRUE)
+DimPlot(Epi, reduction = "umap", label = TRUE, split.by = "PafID")
+
+##AT1 cells Cluster (Ager+/Pdpn+/Cldn18+/Hopx+)
+DotPlot(Epi, features = c("Ager", "Cldn18", "Pdpn", "Hopx"), cols = "RdYlBu")
+
+##AT2 cells Cluster (Sftpc+/Sftpa1+)
+DotPlot(Epi, features = c("Sftpc", "Sftpa1", "Slc34a2", "Sftpb"), cols = "RdYlBu")
+
+##Transitional AT2 (Ager_low/Sftpc_low)
+
+##Krt8+ cells Cluster (Krt8+)
+DotPlot(Epi, features = c("Krt8", "Nupr1", "Sra1"), cols = "RdYlBu")
+
+##ciliated cell Cluster (Foxj1+/Ccdc153+)
+DotPlot(Epi, features = c("Foxj1", "Ccdc153"), cols = "RdYlBu")
+
+#Goblet cell (Scgb3a1+/Scgb3a2+)
+DotPlot(Epi, features = c("Scgb3a1", "Scgb3a2"), cols = "RdYlBu")
+
+#Club cells (Scgb1a1+)
+DotPlot(Epi, features = c("Scgb1a1", "Scgb3a2", "Scgb3a1", "Hp"), cols = "RdYlBu")
+
+#basal (Krt5+/Trp63+)
+DotPlot(Epi, features = c("Krt5", "Trp63"), cols = "RdYlBu")
+
+#neuroendocrine Cluster (Calca+/Chga+)
+DotPlot(Epi, features = c("Calca", "Chga", "Chgb"), cols = "RdYlBu")
+
+#PPC (Mki67+)
+DotPlot(Epi, features = c("Pclaf", "Mki67"), scale.min = 0,  cols = "RdYlBu")
+
+Epi2 <- subset(Epi, idents = c("0", "1", "2",
+                               "3", "4", "5",
+                               "6", "7", "8",
+                               "9", "10", "11",
+                               "12", "13", "14",
+                               "16", "17", "18",
+                               "19"))
+
+DimPlot(Epi2)
+
+Epi2@meta.data$cell_type <- Epi2@meta.data$seurat_clusters
+Epi2@meta.data$cell_type <- plyr::mapvalues(x= Epi2@meta.data$cell_type,
+                                            from=c("0","1", "2", "3", "4", "5", "6","7", "8", "9", "10", "11", "12", "13", "14", "16", "17", "18", "19"),
+                                            to= c("AT2_2", "AT2_2", "AT2_2", "AT2_3", "Ciliated", "Krt8", "AT2", "AT2_3", "Club", "Krt8", "TrAT1", "TrAT1", "Ciliated", "AT1", "PPC", "Ciliated", "Basal", "Goblet", "Neuroendocrine"))
+Idents(Epi2) <- "cell_type"
+DimPlot(Epi2)
+
+Idents(Epi2) <- "PafID"
+table(Epi2@meta.data$PafID)
+
+saveRDS(Epi2, file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi2.rds")
+
+Epi2 <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi2.rds")
+
+DimPlot(Epi2)
+##PafKO 10854, PafWT 1804
+
+Epi3 <- subset(Epi2, idents = c("AT2_2", "Krt8", "AT2_3", "Club", "TrAT1", "Ciliated", "AT1", "Goblet", "AT2", "Basal", "PPC"))
+DimPlot(Epi3)
+
+##downsample
+
+Idents(Epi3) <- "PafID"
+table(Epi3@meta.data$PafID)
+
+##PafWT 1797 PafKO 10807
+
+Epi_WT <- subset(Epi3, idents = "PafWT")
+Epi_KO <- subset(Epi3, idents = "PafKO")
+
+## downsize 6 fold of PafKO
+Epi_KO_down <- subset(x = Epi_KO, downsample = 1801)
+
+Epi <- merge(Epi_WT, y = Epi_KO_down)
+
+##Data processing
+Epi <- NormalizeData(Epi, normalization.method = "LogNormalize", scale.factor = 10000)
+Epi <- FindVariableFeatures(Epi, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(Epi)
+Epi <- ScaleData(Epi, features = all.genes)
+Epi <- RunPCA(Epi, features = VariableFeatures(object = Epi))
+Epi <- JackStraw(Epi, num.replicate = 100)
+Epi <- ScoreJackStraw(Epi, dims = 1:20)
+Epi <- FindNeighbors(Epi, dims = 1:20)
+Epi <- FindClusters(Epi, resolution = 1)
+Epi <- RunUMAP(Epi, dims = 1:20)
+
+#AT2_3 and AT2_2 as same cluster
+Epi@meta.data$cell_type <- plyr::mapvalues(x= Epi@meta.data$cell_type,
+                                            from=c("AT2_3"),
+                                            to= c("AT2_2"))
+
+saveRDS(Epi, file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi_downsizing.rds")
+
+Epi <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi_downsizing.rds")
+
+Idents(Epi) <- "cell_type"
+my_levels <- c("AT2_2", "AT1", "TrAT1", "Krt8", "AT2", "Club", "Ciliated", "Goblet", "Basal", "PPC")
+Epi@meta.data$cell_type <- factor(x = Epi@meta.data$cell_type, levels = my_levels)
+Idents(Epi) <- "cell_type"
+
+table(Epi@meta.data$cell_type)
+
+##AT2_2      AT1    TrAT1     Krt8      AT2     Club Ciliated   Goblet    Basal      PPC 
+##1543       99      588      440      186      204      426       24       24       64 
+
+##cell type by genotype
+Idents(Epi) <- "PafID"
+
+WT <- subset(Epi, idents = "PafWT")
+KO <- subset(Epi, idents = "PafKO")
+
+table(WT@meta.data$cell_type)
+##AT2_2      AT1    TrAT1     Krt8      AT2     Club Ciliated   Goblet    Basal      PPC 
+##532       60      481      242      103      113      220       12       11       23 
+table(KO@meta.data$cell_type)
+##AT2_2      AT1    TrAT1     Krt8      AT2     Club Ciliated   Goblet    Basal      PPC 
+##1011       39      107      198       83       91      206       12       13       41 
