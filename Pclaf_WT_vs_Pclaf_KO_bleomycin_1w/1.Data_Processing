@@ -1,0 +1,98 @@
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(Matrix)
+library(ade4)
+
+##Read data PafWT
+PafWT_data <- Read10X(data.dir = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/PafWT/")
+PafWT <- CreateSeuratObject(PafWT_data, project = "Paf", min.features = 200, min.cells = 3)
+PafWT
+
+##Remove dead cells
+PafWT[["percent.mt"]] <- PercentageFeatureSet(PafWT, pattern = "^mt-")
+VlnPlot(PafWT, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.2)
+
+plot1 <- FeatureScatter(PafWT, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(PafWT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+PafWT <- subset(PafWT, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+
+##add metadata as PafWT
+PafWT@meta.data$PafID <- PafWT@meta.data$orig.ident
+
+Idents(PafWT) <- "PafWT"
+
+PafWT@meta.data$PafID <- Idents(PafWT)
+
+##Read Data PafKO
+
+PafKO_data <- Read10X(data.dir = "//Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/PafKO/")
+PafKO <- CreateSeuratObject(PafKO_data, project = "Paf", min.features = 200, min.cells = 3)
+PafKO
+
+##Remove dead cells
+PafKO[["percent.mt"]] <- PercentageFeatureSet(PafKO, pattern = "^mt-")
+VlnPlot(PafKO, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.2)
+
+plot1 <- FeatureScatter(PafKO, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(PafKO, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+PafKO <- subset(PafKO, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+
+##add metadata as PafKO
+PafKO@meta.data$PafID <- PafKO@meta.data$orig.ident
+
+Idents(PafKO) <- "PafKO"
+
+PafKO@meta.data$PafID <- Idents(PafKO)
+
+##Integration
+lung <- merge(PafWT, y = c(PafKO))
+
+
+##Convert Matrix into h5ad files for further python analysis
+library(SeuratDisk)
+library(SeuratWrappers)
+
+SaveH5Seurat(lung, filename = "lung.h5Seurat")
+Convert("lung.h5Seurat", dest = "h5ad")
+
+##Data Processing
+lung <- NormalizeData(lung, normalization.method = "LogNormalize", scale.factor = 10000)
+lung <- FindVariableFeatures(lung, selection.method = "vst", nfeatures = 2000)
+
+all.genes <- rownames(lung)
+lung <- ScaleData(lung, features = all.genes)
+
+lung <- RunPCA(lung, features = VariableFeatures(object = lung))
+
+DimPlot(lung, reduction = "pca")
+DimPlot(lung, reduction = "pca", split.by = "PafID")
+
+lung <- JackStraw(lung, num.replicate = 100)
+lung <- ScoreJackStraw(lung, dims = 1:20)
+JackStrawPlot(lung, dims = 1:15)
+
+lung <- FindNeighbors(lung, dims = 1:20)
+lung <- FindClusters(lung, resolution = 0.5)
+lung <- RunUMAP(lung, dims = 1:20)
+DimPlot(lung, reduction = "umap")
+DimPlot(lung, reduction = "umap", label = TRUE)
+DimPlot(lung, reduction = "umap", label = TRUE, split.by = "PafID")
+
+##Epithelial cell (Epcam+/Chd1+), Immune cell (Ptprc+), Endothelial cell (Pecam1+), Mesenchymal cell (Epcam-/Ptprc-/Pecam1-/Col1a1+)
+DotPlot(lung, features = c("Epcam", "Chd1", "Ptprc", "Pecam1", "Col1a1"), scale.min = 0,  cols = "RdYlBu")
+FeaturePlot(lung, features = c("Epcam", "Chd1", "Ptprc", "Pecam1", "Col1a1"), cols = c("Lightgrey", "Red"))
+
+#Epithelial subset, Epi 0, 5, 10, 15, 16, 26, 30
+
+Epi <- subset(lung, idents = c("0", "5", "10", "15", "16", "26", "30"))
+
+DimPlot(Epi)
+FeaturePlot(Epi, features = "Epcam")
+
+saveRDS(Epi, file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi.rds")
+Epi <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/epi.rds")
