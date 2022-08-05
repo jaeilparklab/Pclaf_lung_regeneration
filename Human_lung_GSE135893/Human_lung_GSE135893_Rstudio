@@ -5,12 +5,11 @@ library(ggplot2)
 library(Matrix)
 library(ade4)
 
-#=============================
-#Read the data and processing
-#=============================
-
-sciadv_data <- Read10X(data.dir = "/Users/bkim6/Desktop/R/SciAdv/10X/", gene.column = 1)
+## Read matrix and create seurat object
+sciadv_data <- Read10X(data.dir = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/10X", gene.column = 1)
 sciadv <- CreateSeuratObject(sciadv_data, project = "sciadv", min.features = 200)
+
+##Process the data
 sciadv <- PercentageFeatureSet(object = sciadv, pattern = "^MT-", col.name = "percent.mt")
 
 VlnPlot(sciadv, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -29,30 +28,42 @@ sciadv <- ScoreJackStraw(sciadv, dims = 1:20)
 
 sciadv <- RunUMAP(object = sciadv, dims = 1:20, verbose = F)
 sciadv <- FindNeighbors(object = sciadv, dims = 1:20, verbose = F)
-sciadv <- FindClusters(object = sciadv, resolution = 0.01, verbose = F)
-
-#=============================
-#Epithelial subset
-#=============================
+sciadv <- FindClusters(object = sciadv, resolution = 0.1, verbose = F)
 
 DimPlot(sciadv)
+DimPlot(sciadv, label = TRUE)
 
-FeaturePlot(sciadv, c("PTPRC", "EPCAM", "PECAM1"))
-DotPlot(sciadv, features = c("PTPRC", "EPCAM", "PECAM1"))
+## Epithelial (EPCAM+), Endothelial (PECAM1+), Immune (PTPRC+), Mesenchymal compartment (Triple negative)
+FeaturePlot(sciadv, c("PTPRC", "EPCAM", "PECAM1"), cols = c("lightgray", "Red"))
+DotPlot(sciadv, features = c("EPCAM", "PTPRC", "PECAM1"), cols = "RdYlBu")
 
-Idents(sciadv, cells = WhichCells(sciadv, idents = c(1, 3))) <- "Epithelial"
+saveRDS(sciadv, file = "sciadv.rds")
+
+Idents(sciadv, cells = WhichCells(sciadv, idents = c(1, 4))) <- "Epithelial"
+Idents(sciadv, cells = WhichCells(sciadv, idents = c(0, 2, 3, 8, 9))) <- "Immune"
+Idents(sciadv, cells = WhichCells(sciadv, idents = c(5, 10))) <- "Endothelial"
+Idents(sciadv, cells = WhichCells(sciadv, idents = c(6, 7))) <- "Mesenchymal"
 
 sciadv@meta.data$population <- Idents(sciadv)
 
 DimPlot(sciadv)
 
 epi <- subset(sciadv, idents = "Epithelial")
+saveRDS(epi, file = "sciadv_epi.rds")
 
-table(epi@meta.data$population)
+immune <- subset(sciadv, idents = "Immune")
+saveRDS(immune, file = "sciadv_immune.rds")
 
+endo <- subset(sciadv, idents = "Endothelial")
+saveRDS(endo, file = "sciadv_endo.rds")
+
+mesen <- subset(sciadv, idents = "Mesenchymal")
+saveRDS(mesen, file = "sciadv_mesen.rds")
+
+##Epithelial cell processing
 DimPlot(epi)
 
-epi <- FindVariableFeatures(lung, selection.method = "epi", nfeatures = 3000)
+epi <- FindVariableFeatures(epi, selection.method = "epi", nfeatures = 3000)
 all.genes <- rownames(epi)
 epi <- ScaleData(epi, features = all.genes)
 epi <- RunPCA(epi, features = VariableFeatures(object = epi))
@@ -67,81 +78,46 @@ epi <- RunUMAP(epi, dims = 1:11)
 
 DimPlot(epi, label = TRUE)
 
-#=============================
-#Identify cluster marker genes
-#=============================
-
-lung.markers <- FindAllMarkers(epi3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-
-saveRDS(lung.markers, file = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/lung.markers.rds")
-
-library(openxlsx)
-write.xlsx(lung.markers, file = "lung_markers_sciadv_20220522.xlsx")
-
-lung.markers %>%
-  group_by(cluster) %>%
-  top_n(n = 10, wt = avg_log2FC) -> top10
-
-
-DoHeatmap(
-  epi3,
-  features = top10$gene,
-  size = 8,
-  group.by = "celltype2",
-  group.bar = TRUE,
-  group.colors = NULL,
-  draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
-
-#=============================
-#Annotation of clusters
-#=============================
-
+## Annotation AT1 (AGER+/HOPX+), AT2(SFTPC+/ABCA3+), Transitional AT2(AGER_low/HOPX_low/SFTPC_low/ABCA3_low)
 VlnPlot(epi, features = c("SFTPC", "ABCA3", "AGER", "HOPX"), pt.size = 0)
 DotPlot(epi, features = c("SFTPC", "ABCA3", "AGER", "HOPX"))
-DotPlot(epi, features = c("KRT8"), cols = "RdYlBu")
 
 Idents(epi, cells = WhichCells(epi, idents = c(10))) <- "AT1"
 Idents(epi, cells = WhichCells(epi, idents = c(8, 9, 12, 13, 19, 26))) <- "AT2"
 Idents(epi, cells = WhichCells(epi, idents = c(15, 7))) <- "Transitional AT2"
 
+##MUC5B+(MUC5B+), SCGB3A2+(SCGB3A2+/SCGB1A1-), SCGB3A2+/SCGB1A1+(SCGB3A2+/SCGB1A1+)
 DotPlot(epi, features = c("SCGB1A1", "SCGB3A2", "MUC5B", "MUC5AC"), cols = "RdYlBu")
 
 Idents(epi, cells = WhichCells(epi, idents = c(3))) <- "MUC5B+"
 Idents(epi, cells = WhichCells(epi, idents = c(5))) <- "SCGB3A2+"
 Idents(epi, cells = WhichCells(epi, idents = c(18, 2))) <- "SCGB3A2+/SCGB1A1+"
 
-DotPlot(epi, features = c("KRT5", "KRT17", "TP63", "COL1A1"), cols = "RdYlBu")
+##Basal(KRT5+/TP63+)
+DotPlot(epi, features = c("KRT5", "TP63"), cols = "RdYlBu")
 
 Idents(epi, cells = WhichCells(epi, idents = c(6, 30))) <- "Basal"
-Idents(epi, cells = WhichCells(epi, idents = c(29))) <- "KRT5-/KRT17+"
 
-DotPlot(epi, features = c("FOXI1", "CHGA"))
-
-
-DotPlot(epi, features = c("MKI67"))
+##Proliferating(MKI67+/TOP2A+)
+DotPlot(epi, features = c("MKI67", "TOP2A"))
 
 Idents(epi, cells = WhichCells(epi, idents = c(25))) <- "Proliferating"
 
-DotPlot(epi, features = c("FOXJ1", "TMEM190", "CAPS", "HYDIN"), cols = "RdYlBu")
+##Ciliated(FOXJ1+/TMEM190+/CAPS+/HYDIN+), Differentiating Ciliated(FOXJ1+/SFTPB+)
+DotPlot(epi, features = c("FOXJ1", "TMEM190", "CAPS", "HYDIN", "SFTPB"), cols = "RdYlBu")
 
 Idents(epi, cells = WhichCells(epi, idents = c(0, 1, 4))) <- "Ciliated"
 Idents(epi, cells = WhichCells(epi, idents = c(17, 14, 11, 21))) <- "Differentiating Ciliated"
 
 DotPlot(epi, features = c("FOXJ1", "SFTPB"),  cols = "RdYlBu")
 
-DotPlot(epi, features = c("EPCAM", "PTPRC", "PECAM1", "LUM"), cols = "RdYlBu")
-DotPlot(epi, features = c("MUC5AC"), cols = "RdYlBu")
-
 DimPlot(epi)
 
 epi$celltype <- Idents(epi)
 
 
-keep <- c("AT2","Differentiating Ciliated","Transitional AT2", "SCGB3A2+/SCGB1A1+", "AT1","MUC5B+","SCGB3A2+","Basal","Ciliated","KRT5-/KRT17+", "Proliferating")
-epi2 <- subset(epi, idents = c("AT2","Differentiating Ciliated", "Transitional AT2", "SCGB3A2+/SCGB1A1+", "AT1","MUC5B+","SCGB3A2+","Basal","Ciliated","KRT5-/KRT17+", "Proliferating"))
-
-my_levels <- c("AT2","Differentiating Ciliated", "Transitional AT2", "SCGB3A2+/SCGB1A1+", "AT1","MUC5B+","SCGB3A2+","Basal","Ciliated","KRT5-/KRT17+", "Proliferating")
+keep <- c("AT2","Differentiating Ciliated","Transitional AT2", "SCGB3A2+/SCGB1A1+", "AT1","MUC5B+","SCGB3A2+","Basal","Ciliated", "Proliferating")
+epi2 <- subset(epi, idents = c("AT2","Differentiating Ciliated", "Transitional AT2", "SCGB3A2+/SCGB1A1+", "AT1","MUC5B+","SCGB3A2+","Basal","Ciliated","Proliferating"))
 
 
 DimPlot(epi2)
@@ -149,18 +125,38 @@ DimPlot(epi2)
 saveRDS(epi2, file = "sciadv_epi.rds")
 epi2 <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/sciadv_epi.rds")
 
-DotPlot(epi2, features = c("KIAA0101", "MKI67", "TOP2A"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
+## Extended Data Fig.1d
+my_levels <- c("AT1", "Transitional AT2", "AT2", "SCGB3A2+/SCGB1A1+", "SCGB3A2+", 
+               "Ciliated", "Differentiating Ciliated", "MUC5B+", "Proliferating", "Basal")
 
-FeaturePlot(epi2, c("KIAA0101"), split.by = "Status", pt.size = 0.5, cols = c("lightgray", "Red"))
-FeaturePlot(epi2, c("KIAA0101"), pt.size = 0.4, cols = c("lightgray", "Red"))
+epi2@meta.data$celltype <- factor(x = epi2@meta.data$celltype, levels = my_levels)
 
-FeaturePlot(epi2, c("KIAA0101"), split.by = "Status", pt.size = 0.2)
+Idents(epi2) <- "celltype"
+DimPlot(epi2)
 
-#=============================
-#Dot Plot or Feature Plot of marker genes
-#=============================
+#Marker gene expression, Supplementary table 2
+lung.markers <- FindAllMarkers(epi2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
-DotPlot(epi3, features = c("KIAA0101",
+saveRDS(lung.markers, file = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/lung.markers.rds")
+
+library(openxlsx)
+write.xlsx(lung.markers, file = "lung_markers_sciadv_20220522.xlsx")
+
+## Extended Data Fig. 2b, 2e, and 2f
+lung.markers %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_log2FC) -> top10
+
+DoHeatmap(
+  epi2,
+  features = top10$gene,
+  size = 8,
+  group.by = "celltype2",
+  group.bar = TRUE,
+  group.colors = NULL,
+  draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+
+DotPlot(epi2, features = c("KIAA0101",
                            "MKI67",
                            "AGER",
                            "PDPN",
@@ -189,74 +185,228 @@ FeaturePlot(object = epi3,
                          "KRT5"),
             cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
 
-FeaturePlot(object = epi3, 
-            features = c("KIAA0101"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
 
-FeaturePlot(object = epi3, 
-            features = c("MKI67"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
+##PPC(PCLAF+), Extended Data Fig. 2e and 2f
+DotPlot(epi2, features = c("KIAA0101", "MKI67", "TOP2A"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
 
-FeaturePlot(object = epi3, 
-            features = c("AGER"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
+FeaturePlot(epi2, c("KIAA0101"), split.by = "Status", pt.size = 0.5, cols = c("lightgray", "Red"))
 
-FeaturePlot(object = epi3, 
-            features = c("SFTPC"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
+##DREAM target gene, Fig. 3b
+epi2 <- AddModuleScore(object = epi2, features = gene_list_DREAM, name = "DREAM_score")
 
-FeaturePlot(object = epi3, 
-            features = c("SCGB1A1"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
+DotPlot(epi2, features = c("DREAM_score1"), cols = "RdYlBu")
 
-FeaturePlot(object = epi3, 
-            features = c("SCGB3A2"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
+##Disease type analysis
 
-FeaturePlot(object = epi3, 
-            features = c("MUC5B"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
 
-FeaturePlot(object = epi3, 
-            features = c("FOXJ1"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
 
-FeaturePlot(object = epi3, 
-            features = c("KRT5"),
-            cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE
+epi2@meta.data$disease <- epi2@meta.data$orig.ident
 
-#=============================
-#Module score for DREAM-target genes
-#=============================
+epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
+                                          from=c("F01385",
+                                                 "F01386",
+                                                 "ILD57"),
+                                          to= c("Sarcoidosis",
+                                                "Sarcoidosis",
+                                                "Sarcoidosis"))
 
-epi3 <- subset(epi2, idents = c("AT2","Differentiating Ciliated", "Transitional AT2", "SCGB3A2+/SCGB1A1+", "AT1","MUC5B+","SCGB3A2+","Basal","Ciliated", "Proliferating"))
+epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
+                                          from=c("F00202",
+                                                 "ILD55",
+                                                 "ILD62-1",
+                                                 "ILD62-2"),
+                                          to= c("NSIP",
+                                                "NSIP",
+                                                "NSIP",
+                                                "NSIP"))
 
-DimPlot(epi3)
 
-epi3 <- AddModuleScore(object = epi3, features = gene_list_DREAM, name = "DREAM_score")
+epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
+                                          from=c("F00431",
+                                                 "F01172",
+                                                 "F01173",
+                                                 "F01214",
+                                                 "F01302",
+                                                 "F01303",
+                                                 "F01379",
+                                                 "F01380",
+                                                 "F01390",
+                                                 "F01391",
+                                                 "F01392",
+                                                 "ILD53",
+                                                 "ILD59-1",
+                                                 "ILD59-2",
+                                                 "ILD60-1",
+                                                 "ILD60-2",
+                                                 "ILD61-1",
+                                                 "ILD61-2",
+                                                 "ILD63"),
+                                          to= c("IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF",
+                                                "IPF"))
 
-DotPlot(epi3, features = "DREAM_score1", cols = "RdYlBu")
+epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
+                                          from=c("F01375",
+                                                 "F01376"),
+                                          to= c("ILD",
+                                                "ILD"))
 
-my_levels <- c("AT1",
-               "Transitional AT2",
-               "AT2",
-               "SCGB3A2+/SCGB1A1+",
-               "SCGB3A2+",
-               "Ciliated",
-               "Differentiating Ciliated",
-               "MUC5B+",
-               "Proliferating",
-               "Basal")
-  
-epi3@meta.data$celltype2 <- factor(x = epi3@meta.data$celltype, levels = my_levels)
+epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
+                                          from=c("F00409",
+                                                 "F01157",
+                                                 "F01174",
+                                                 "F01365",
+                                                 "F01366",
+                                                 "F01367",
+                                                 "F01394",
+                                                 "HD65",
+                                                 "HD66",
+                                                 "HD67",
+                                                 "HD68",
+                                                 "HD70"),
+                                          to= c("Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control",
+                                                "Control"))
 
-Idents(epi3) <- "celltype2"
+epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
+                                          from=c("F00207",
+                                                 "F00208",
+                                                 "ILD58"),
+                                          to= c("cHP",
+                                                "cHP",
+                                                "cHP"))
 
-DoHeatmap(
-  epi3,
-  features = gene_list_DREAM,
-  size = 8,
-  group.bar = TRUE,
-  group.colors = NULL,
-  draw.lines = TRUE,
-  combine = TRUE,) + scale_fill_gradient2( low = rev(c('#d1e5f0','#67a9cf','#2166ac')), mid = "white", high = rev(c('#b2182b','#ef8a62','#fddbc7')), guide = "colourbar", aesthetics = "fill")
+## Extended Data Figure 10a, 10b, and 10c
+Idents(epi2) <- "celltype"
+
+DimPlot(epi2, pt.size = 0.01)
+
+my_levels <- c("Control", "IPF", "cHP", "NSIP", "ILD", "Sarcoidosis")
+epi2@meta.data$disease <- factor(x = epi2@meta.data$disease, levels = my_levels)
+
+Idents(epi2) <- "disease"
+Idents(epi2) <- "celltype"
+
+DimPlot(epi2, split.by = "disease", pt.size = 0.5)
+
+epi2 <- AddModuleScore(object = epi2, features = gene_list_DREAM, name = "DREAM_score")
+
+epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_mES, name = "tgf_mES_score")
+epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_hES, name = "tgf_hES_score")
+epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_A549, name = "tgf_A549_score")
+
+DotPlot(epi2, features = c("KIAA0101", "DREAM_score1", "CLIC4", "tgf_A549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu")
+
+
+##Mesenchymal analysis
+mesen <- readRDS(file = "sciadv_mesen.rds")
+
+mesen <- FindVariableFeatures(mesen, selection.method = "mesen", nfeatures = 3000)
+all.genes <- rownames(mesen)
+mesen <- ScaleData(mesen, features = all.genes)
+mesen <- RunPCA(mesen, features = VariableFeatures(object = mesen))
+
+mesen <- JackStraw(mesen, num.replicate = 100)
+mesen <- ScoreJackStraw(mesen, dims = 1:20)
+
+mesen <- FindNeighbors(mesen, dims = 1:20)
+mesen <- FindClusters(mesen, resolution = 0.5)
+
+mesen <- RunUMAP(mesen, dims = 1:11)
+
+DimPlot(mesen, label = TRUE)
+
+##Sorting again of mesenchymal cell (PTPRC-/PECAM-/EPCAM-)
+
+DotPlot(mesen, features = c("EPCAM", "PTPRC", "PECAM1"), cols = "RdYlBu")
+
+mesen2 <- subset(mesen, idents = c("0", "1", "4", "5", "7", "8", "11", "12", "14"))
+DimPlot(mesen2, label = TRUE)
+
+##Process data
+mesen2 <- FindVariableFeatures(mesen2, selection.method = "mesen2", nfeatures = 3000)
+all.genes <- rownames(mesen2)
+mesen2 <- ScaleData(mesen2, features = all.genes)
+mesen2 <- RunPCA(mesen2, features = VariableFeatures(object = mesen2))
+
+mesen2 <- JackStraw(mesen2, num.replicate = 100)
+mesen2 <- ScoreJackStraw(mesen2, dims = 1:20)
+
+mesen2 <- FindNeighbors(mesen2, dims = 1:20)
+mesen2 <- FindClusters(mesen2, resolution = 0.1)
+
+mesen2 <- RunUMAP(mesen2, dims = 1:11)
+DimPlot(mesen2, label = TRUE)
+
+##annotation Fibroblast (FN1+/COL1A1+)
+VlnPlot(mesen2, features = c("FN1", "COL1A1", "COL3A1"), pt.size = 0)
+
+#Smooth Muscle Cells (ACTA2+/MYH11+)
+DotPlot(mesen2, features = c("ACTA2", "MYH11"), cols = "RdYlBu")
+
+#Mesothelial cells(MSLN+/UPK3B+)
+DotPlot(mesen2, features = c("MSLN", "UPK3B"), cols = "RdYlBu")
+
+Idents(mesen2, cells = WhichCells(mesen2, idents = c(1, 4))) <- "Smooth muscle cell"
+Idents(mesen2, cells = WhichCells(mesen2, idents = c(5))) <- "Mesothelial"
+Idents(mesen2, cells = WhichCells(mesen2, idents = c(0, 6, 2))) <- "Fibroblast"
+
+mesen2$celltype <- Idents(mesen2)
+
+mesen3 <- subset(mesen2, idents = c("Smooth muscle cell", "Mesothelial", "Fibroblast"))
+
+Idents(mesen3) <- "celltype"
+
+##Extended Data Fig. 10f, 10g, 10h, and 10i
+DimPlot(mesen3, pt.size = 1)
+
+DimPlot(mesen3, split.by = "disease", pt.size = 1)
+
+table(mesen3@meta.data$disease)
+
+#NSIP         cHP     Control         IPF         ILD Sarcoidosis 
+#1228         967         908        4163         109         294 
+
+FeaturePlot(mesen3, c("ACTA2", "MYH11", "MSLN", "UPK3B", "FN1", "COL1A1"), 
+            pt.size = 0.4, 
+            cols = c("lightgray", "Red"))
+
+mesen3 <- AddModuleScore(object = mesen3, features = gene_list_tgf_A549, name = "Smad3_score_A549")
+mesen3 <- AddModuleScore(object = mesen3, features = gene_list_tgf_hES, name = "Smad3_score_hES")
+mesen3 <- AddModuleScore(object = mesen3, features = gene_list_tgf_mES, name = "Smad3_score_mES")
+
+mesen4 <- subset(mesen3, idents = c("Fibroblast"))
+
+DimPlot(mesen4, split.by = "disease")
+
+my_levels <- c("Control", "IPF", "cHP", "NSIP", "ILD", "Sarcoidosis")
+mesen4@meta.data$disease <- factor(x = mesen4@meta.data$disease, levels = my_levels)
+Idents(mesen4) <- "disease"
+
+DotPlot(mesen4, features = c("Smad3_score_A5491", "Smad3_score_mES1", "Smad3_score_hES1"), cols = "RdYlBu")
+
