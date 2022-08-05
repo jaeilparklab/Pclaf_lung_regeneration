@@ -1,0 +1,61 @@
+##Marker Supplementary table 3, Extended Data Fig. 5b
+lung.markers <- FindAllMarkers(Epi, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+saveRDS(lung.markers, file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/lung.markers.rds")
+
+library(openxlsx)
+write.xlsx(lung.markers, file = "lung_markers_myscRNAseq_20220522.xlsx")
+
+lung.markers %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_log2FC) -> top10
+
+
+DoHeatmap(
+  Epi,
+  features = top10$gene,
+  size = 8,
+  group.by = "cell_type",
+  group.bar = TRUE,
+  group.colors = NULL,
+  draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+  
+##DimPlots, Extended Data Fig. 6a, and Fig. 2b
+
+Idents(Epi) <- "cell_type"
+
+DimPlot(Epi)
+
+DimPlot(Epi, split.by = "PafID")
+
+##cell proportion test, Fig. 2c
+library(scProportionTest)
+prop_test <- sc_utils(Epi)
+
+prop_test <- permutation_test(
+  prop_test, cluster_identity = "cell_type",
+  sample_1 = "PafWT", sample_2 = "PafKO",
+  sample_identity = "PafID")
+permutation_plot(prop_test)
+
+##Marker genes, Extended Data Fig. 6b, and 6c
+
+gene_list_marker <- c("Pclaf", "Mki67", "Ager","Cldn18", "Sftpc", "Sftpa1", "Krt8", "Scgb1a1", "Scgb3a2", "Foxj1", "Ccdc153", "Scgb3a1", "Reg3g", "Chga", "Calca", "Krt5", "Trp63", "Cd200", "Itgb4")
+
+DotPlot(Epi, features = gene_list_marker, cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
+
+FeaturePlot(object = Epi,
+            features = c("Pclaf", "Mki67", "Ager", "Sftpc", "Krt8", "Scgb1a1", "Foxj1", "Scgb3a1", "Krt5"),
+            cols = c("lightgray", "Red"), pt.size = 0.2)
+
+##Specify of AT2 cells, Extended Data Fig. 6d, and 6e
+
+DotPlot(Epi, feature = c("Sftpc", "Sftpa1", "Tmsb4x", "Lyz2", "Cxcl15", "Lcn2", "Slc34a2", "Hc", "Sftpb", "Lamp3"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
+
+FeaturePlot(object = Epi,
+            features = c("Lcn2", "Slc34a2"),
+            cols = c("lightgray", "Red"), pt.size = 0.2)
+
+##DREAM target gene module score, Fig. 3d
+Epi <- AddModuleScore(object = Epi, features = gene_list_DREAM, name = "DREAM_score")
+DotPlot(Epi, feature = "DREAM_score1", split.by = "PafID", cols = "RdYlBu")
