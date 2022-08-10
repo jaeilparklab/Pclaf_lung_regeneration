@@ -1,0 +1,426 @@
+##pySCENIC analysis
+
+import os, glob, re, pickle
+from functools import partial
+from collections import OrderedDict
+import operator as op
+from cytoolz import compose
+
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import scanpy as sc
+import scanpy.external as sce
+import anndata as ad
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+sc.settings.verbosity = 3
+sc.logging.print_header()
+sc.set_figure_params(dpi=100, dpi_save=600)
+
+from pyscenic.export import export2loom, add_scenic_metadata
+from pyscenic.utils import load_motifs
+from pyscenic.transform import df2regulons
+from pyscenic.aucell import aucell
+from pyscenic.binarization import binarize
+from pyscenic.rss import regulon_specificity_scores
+from pyscenic.plotting import plot_binarization, plot_rss
+
+from IPython.display import HTML, display
+
+import base64
+import glob
+import json
+import loompy as lp
+import os
+import scipy
+import zlib
+
+
+from matplotlib import rcParams
+from adjustText import adjust_text
+
+# set a working directory
+wdir = "/Users/bkim6/Desktop/Seq/pySENIC/Sub"
+os.chdir(wdir)
+
+# path to loom file with basic filtering applied (this will be created in the "initial filtering" step below).
+f_loom_path_scenic = "/Users/bkim6/Desktop/Seq/pySENIC/Sub/lung_filtered_for_scenic_sub.loom"
+
+# create these folders manually
+AUXILLIARIES_FOLDERNAME = "/Users/bkim6/Desktop/Seq/pySENIC/Sub/auxilliaries/"
+RESULTS_FOLDERNAME = "/Users/bkim6/Desktop/Seq/pySENIC/Sub/results/"
+FIGURES_FOLDERNAME = "/Users/bkim6/Desktop/Seq/pySENIC/Sub/figures/"
+sc.settings.figdir = FIGURES_FOLDERNAME
+
+# Auxilliary functions
+BASE_URL = "http://motifcollections.aertslab.org/v9/logos/"
+COLUMN_NAME_LOGO = "MotifLogo"
+COLUMN_NAME_MOTIF_ID = "MotifID"
+COLUMN_NAME_TARGETS = "TargetGenes"
+
+def savesvg(fname: str, fig, folder: str=FIGURES_FOLDERNAME) -> None:
+    """
+    Save figure as vector-based SVG image format.
+    """
+    fig.tight_layout()
+    fig.savefig(os.path.join(folder, fname), format='svg')
+    
+    def display_logos(df: pd.DataFrame, top_target_genes: int = 3, base_url: str = BASE_URL):
+    """
+    :param df:
+    :param base_url:
+    """
+    # Make sure the original dataframe is not altered.
+    df = df.copy()
+    
+    # Add column with URLs to sequence logo.
+    def create_url(motif_id):
+        return '<img src="{}{}.png" style="max-height:124px;"></img>'.format(base_url, motif_id)
+    df[("Enrichment", COLUMN_NAME_LOGO)] = list(map(create_url, df.index.get_level_values(COLUMN_NAME_MOTIF_ID)))
+    
+    # Truncate TargetGenes.
+    def truncate(col_val):
+        return sorted(col_val, key=op.itemgetter(1))[:top_target_genes]
+    df[("Enrichment", COLUMN_NAME_TARGETS)] = list(map(truncate, df[("Enrichment", COLUMN_NAME_TARGETS)]))
+    
+    MAX_COL_WIDTH = pd.get_option('display.max_colwidth')
+    pd.set_option('display.max_colwidth', -1)
+    display(HTML(df.head().to_html(escape=False)))
+    pd.set_option('display.max_colwidth', MAX_COL_WIDTH)
+    
+# Auxilliary data sets, put the files into coresponding folders
+Mouse_TFS_FNAME = os.path.join(AUXILLIARIES_FOLDERNAME, 'mm_mgi_tfs.txt')
+RANKING_DBS_FNAMES = list(map(lambda fn: os.path.join(AUXILLIARIES_FOLDERNAME, fn),
+                       ['mm10__refseq-r80__10kb_up_and_down_tss.mc9nr.feather','mm10__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.feather']))
+MOTIF_ANNOTATIONS_FNAME = os.path.join(AUXILLIARIES_FOLDERNAME, 'motifs-v9-nr.mgi-m0.001-o0.0.tbl')
+
+# input resources
+DATASET_ID = "Sub"
+TCGA_CODE = 'mouse_COAD'
+
+# create Results path
+ADJACENCIES_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.adjacencies.tsv'.format(DATASET_ID))
+MOTIFS_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.motifs.csv'.format(DATASET_ID))
+REGULONS_DAT_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.regulons.dat'.format(DATASET_ID))
+AUCELL_MTX_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.aucell.csv'.format(DATASET_ID))
+BINARY_MTX_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.binary.csv'.format(DATASET_ID))
+THR_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.thresholds.csv'.format(DATASET_ID))
+ANNDATA_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.h5ad'.format(DATASET_ID))
+LOOM_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}_{}.loom'.format(TCGA_CODE, DATASET_ID))
+
+#read raw matrix
+raw = sc.read(filename='/Users/bkim6/Desktop/Seq/pySENIC/lung.h5ad')
+
+raw.__dict__['_raw'].__dict__['_var'] = raw.__dict__['_raw'].__dict__['_var'].rename(columns={'_index': 'features'})
+
+#read matrix for cell type information
+sub = sc.read('/Users/bkim6/Desktop/Seq/pySENIC/Epi_sub.h5ad')
+
+sc.pp.pca(sub)
+sc.pp.neighbors(sub)
+sc.tl.umap(sub)
+
+sub.obs['cell_type'] = sub.obs['cell_type'].astype('category')
+
+sub.obs['cell_type']
+
+#input cell type information into raw data
+raw.obs['cell_type']=sub.obs['cell_type']
+raw
+
+#subset raw data
+adata=raw[raw.obs['cell_type'].isin(['AT1_WT', 'AT1_KO',
+                                    'AT2_WT', 'AT2_KO',
+                                    'Krt8_WT', 'Krt8_KO',
+                                    'PPC_WT', 'PPC_KO',
+                                    'TrAT1_WT', 'TrAT1_KO'])]
+
+# create Results path
+ADJACENCIES_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.adjacencies.tsv'.format(DATASET_ID))
+MOTIFS_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.motifs.csv'.format(DATASET_ID))
+REGULONS_DAT_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.regulons.dat'.format(DATASET_ID))
+AUCELL_MTX_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.aucell.csv'.format(DATASET_ID))
+BINARY_MTX_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.binary.csv'.format(DATASET_ID))
+THR_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.thresholds.csv'.format(DATASET_ID))
+ANNDATA_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}.h5ad'.format(DATASET_ID))
+LOOM_FNAME = os.path.join(RESULTS_FOLDERNAME, '{}_{}.loom'.format(TCGA_CODE, DATASET_ID))
+
+# STEP 0: Preprocessing
+
+sc.pl.highest_expr_genes(adata, n_top=20)
+sc.pp.filter_cells(adata, min_genes=100)
+sc.pp.filter_genes(adata, min_cells=10)
+adata.var['mt'] = adata.var_names.str.startswith('mt-')
+adata.var['rpl'] = adata.var_names.str.startswith('Rpl')
+adata.var['rps'] = adata.var_names.str.startswith('Rps')
+sc.pp.calculate_qc_metrics(adata, qc_vars=['mt','rpl','rps'], percent_top=None, log1p=False, inplace=True)
+sc.pl.violin(adata, keys=['n_genes_by_counts', 'total_counts', 'pct_counts_mt','pct_counts_rpl','pct_counts_rps'], jitter=0.4, multi_panel=True)
+sc.pl.scatter(adata, x='total_counts', y='pct_counts_mt')
+sc.pl.scatter(adata, x='total_counts', y='pct_counts_rpl')
+sc.pl.scatter(adata, x='total_counts', y='pct_counts_rps')
+sc.pl.scatter(adata, x='total_counts', y='n_genes_by_counts')
+adata = adata[adata.obs.n_genes_by_counts < 4000, :]
+adata = adata[adata.obs.pct_counts_mt < 50, :]
+adata = adata[adata.obs.pct_counts_rpl < 20, :]
+adata = adata[adata.obs.pct_counts_rps < 20, :]
+adata.write_h5ad(ANNDATA_FNAME)
+
+# Output the basic filtered expression matrix to f_loom_path_scenic
+row_attrs = {"Gene": np.array(adata.var_names)}
+col_attrs = {"CellID": np.array(adata.obs_names), "nGene": np.array(np.sum(adata.X.transpose()>0, axis=0)).flatten(),
+             "nUMI": np.array(np.sum(adata.X.transpose(), axis=0)).flatten()}
+lp.create(f_loom_path_scenic, adata.X.transpose(), row_attrs, col_attrs)
+# key step, after basic filtering, save into f_loom_path_scenic instead of the data after Scanpy proceedingfor SCENIC 
+
+sc.pp.normalize_total(adata)
+sc.pp.log1p(adata)
+sc.pp.highly_variable_genes(adata, n_top_genes=5000)
+sc.pl.highly_variable_genes(adata)
+print(sum(adata.var.highly_variable))
+adata.raw=adata
+adata = adata[:, adata.var.highly_variable]
+sc.pp.regress_out(adata, keys=['pct_counts_mt','pct_counts_rpl','pct_counts_rps'], n_jobs=16)
+sc.pp.scale(adata, max_value=10)
+sc.tl.pca(adata, svd_solver='arpack')
+sc.pp.neighbors(adata, n_pcs=50, knn=True)
+sc.tl.leiden(adata, resolution=0.4)
+sc.tl.umap(adata)
+sc.pl.umap(adata, color=['cell_type'], legend_loc='right margin', frameon=False, title='', use_raw=False)
+
+# create adata.obs['pca_cell_type'] to store leiden cluster names determined by pca
+adata.obs['pca_cell_type'] = (
+    adata.obs['cell_type'])
+adata.obs['pca_cell_type'].cat.reorder_categories(['AT1_WT', 'AT1_KO',
+                                    'AT2_WT', 'AT2_KO',
+                                    'Krt8_WT', 'Krt8_KO',
+                                    'PPC_WT', 'PPC_KO',
+                                    'TrAT1_WT', 'TrAT1_KO'], inplace = True)
+sc.pl.umap(adata, color=['pca_cell_type'], legend_loc='right margin', title='', frameon=False, use_raw=False)
+
+# STEP 1: Gene regulatory network inference, and module generation
+
+%%time
+!pyscenic grn {f_loom_path_scenic} {Mouse_TFS_FNAME} -o {ADJACENCIES_FNAME} --num_workers 8
+
+# STEP 2-3: Motif enrichment and TF-regulon prediction
+
+DBS_PARAM = ' '.join(RANKING_DBS_FNAMES)
+
+%%time
+!pyscenic ctx {ADJACENCIES_FNAME} {DBS_PARAM} \
+            --annotations_fname {MOTIF_ANNOTATIONS_FNAME} \
+            --expression_mtx_fname {f_loom_path_scenic} \
+            --output {MOTIFS_FNAME} \
+            --num_workers 8
+# The results is a list of enriched motifs for the modules
+
+df_motifs = load_motifs(MOTIFS_FNAME)
+df_motifs.head()
+
+display_logos(df_motifs.head())
+
+# STEP 4: Cellular enrichment
+
+# REGULON CREATION
+def derive_regulons(motifs, db_names=('mm10__refseq-r80__10kb_up_and_down_tss.mc9nr', 'mm10__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr')):
+    motifs.columns = motifs.columns.droplevel(0)
+
+    def contains(*elems):
+        def f(context):
+            return any(elem in context for elem in elems)
+        return f
+
+    # We remove the enriched motifs for the modules that were created using the method 'weight>50.0%'
+    # because these modules are not part of the default settings of modules_from_adjacencies anymore
+    motifs = motifs[
+        np.fromiter(map(compose(op.not_, contains('weight>50.0%')), motifs.Context), dtype=np.bool) & \
+        np.fromiter(map(contains(*db_names), motifs.Context), dtype=np.bool) & \
+        np.fromiter(map(contains('activating'), motifs.Context), dtype=np.bool)]
+
+    # We build regulons only using enriched motifs with a NES of 3.0 or higher; we take only directly annotated TFs or TF annotated
+    # for an orthologous gene into account; and we only keep regulons with at least 10 genes.
+    regulons = list(filter(lambda r: len(r) >= 5, df2regulons(motifs[(motifs['NES'] >= 2.0) 
+                                                                      & ((motifs['Annotation'] == 'gene is directly annotated')
+                                                                         | (motifs['Annotation'].str.startswith('gene is orthologous to')
+                                                                            & motifs['Annotation'].str.endswith('which is directly annotated for motif')))
+                                                                     ])))
+    
+  # Rename regulons, i.e. remove suffix.
+    return list(map(lambda r: r.rename(r.transcription_factor), regulons))
+    
+    regulons = derive_regulons(df_motifs)
+    
+    
+# Pickle these regulons.
+with open(REGULONS_DAT_FNAME, 'wb') as f:
+    pickle.dump(regulons, f)  
+    
+# AUCELL
+nGenesDetectedPerCellbefore = np.sum(adata.X>0, axis=1)
+nGenesDetectedPerCell = pd.Series(nGenesDetectedPerCellbefore)
+percentiles = nGenesDetectedPerCell.quantile(q=[0.01, 0.05, 0.10, 0.50, 1])
+percentiles
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+sns.distplot(nGenesDetectedPerCell, norm_hist=False, kde=False, bins='fd')
+for i,x in enumerate(percentiles):
+    fig.gca().axvline(x=x, ymin=0, ymax=1, color='red')
+    ax.text(x=x, y=ax.get_ylim()[1], s=f'{int(x)} ({percentiles.index.values[i]*100}%)', color='red', rotation=30, size='medium', rotation_mode='anchor')
+ax.set_xlabel('Number of genes')
+ax.set_ylabel('Number of cells')
+plt.tight_layout()
+
+%%time
+!pyscenic aucell \
+    {f_loom_path_scenic} \
+    {REGULONS_DAT_FNAME} \
+    --output {AUCELL_MTX_FNAME} \
+    --num_workers 8
+
+auc_mtx = pd.read_csv(AUCELL_MTX_FNAME, index_col=0)
+auc_mtx
+
+# STEP 5 - Regulon activity binarization
+
+%%time
+binary_mtx, thresholds = binarize(auc_mtx)
+binary_mtx.to_csv(BINARY_MTX_FNAME)
+thresholds.to_frame().rename(columns={0:'threshold'}).to_csv(THR_FNAME)
+
+binary_mtx = pd.read_csv(BINARY_MTX_FNAME, index_col=0)
+binary_mtx
+
+thresholds = pd.read_csv(THR_FNAME, index_col=0).threshold
+thresholds
+
+# Create heatmap with binarized regulon activity
+
+def palplot(pal, names, colors=None, size=1):
+    n = len(pal)
+    f, ax = plt.subplots(1, 1, figsize=(n * size, size))
+    ax.imshow(np.arange(n).reshape(1, n),
+              cmap=mpl.colors.ListedColormap(list(pal)),
+              interpolation="nearest", aspect="auto")
+    ax.set_xticks(np.arange(n) - 0.5)
+    ax.set_yticks([-0.5, 0.5])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    colors = n * ['k'] if colors is None else colors
+    for idx, (name, color) in enumerate(zip(names, colors)):
+        ax.text(0.0+idx, 0.0, name, color=color, horizontalalignment='center', verticalalignment='center')
+    return f
+
+N_COLORS = len(adata.obs['pca_cell_type'].dtype.categories)
+COLORS = [x for x in adata.uns['pca_cell_type_colors']]
+
+pca_leiden_color_lut = dict(zip(adata.obs['pca_cell_type'].dtype.categories, adata.uns['pca_cell_type_colors']))
+CellID_to_pca_leiden_lut = adata.obs['pca_cell_type'].to_dict()
+white_black_palette = sns.xkcd_palette(["white", "black"])
+
+sns.set()
+sns.set_style("whitegrid")
+fig = palplot(white_black_palette, ['OFF', 'ON'], ['k', 'w'])
+savesvg('legend - lung - on_off.svg', fig)
+
+sns.set()
+sns.set(font_scale=1)
+fig = palplot(sns.color_palette(COLORS, n_colors=N_COLORS), adata.obs['pca_cell_type'].dtype.categories, size=1.5)
+savesvg('legend - lung.svg', fig)
+
+sns.set()
+sns.set(font_scale=1)    # if do not reset later, this font size will affect all downstream plotting
+sns.set_style("ticks", {"xtick.minor.size": 1, "ytick.minor.size": 0.1})
+g = sns.clustermap(data=binary_mtx.T, figsize=(30,20),
+                   col_colors=auc_mtx.index.map(CellID_to_pca_leiden_lut).map(pca_leiden_color_lut),
+                   cmap=white_black_palette)
+g.ax_heatmap.set_xticklabels([])
+g.ax_heatmap.set_xticks([])
+g.ax_heatmap.set_xlabel('Cells')
+g.ax_heatmap.set_ylabel('Regulons')
+g.ax_col_colors.set_yticklabels([])
+g.ax_col_colors.set_yticks([])
+g.ax_row_dendrogram.set_visible(False)
+g.ax_col_dendrogram.set_visible(False)
+g.cax.set_visible(False)
+g.fig.savefig(os.path.join(FIGURES_FOLDERNAME, 'clustermap - lung.pdf'), format='pdf')
+
+# Save clustered binarized heatmap to Excel for further inspection
+binary_mtx_clustered = binary_mtx.T.copy()
+binary_mtx_clustered.rename(columns=adata.obs['pca_cell_type'].to_dict(), inplace=True)
+binary_mtx_clustered.iloc[g.dendrogram_row.reordered_ind, g.dendrogram_col.reordered_ind].to_excel(os.path.join(RESULTS_FOLDERNAME, 'lungWT - Binarized regulon activity.xlsx'))
+
+# Generate sequence logos
+def fetch_logo(regulon, base_url = BASE_URL):
+    for elem in regulon.context:
+        if elem.endswith('.png'):
+            return '<img src="{}{}" style="max-height:124px;"></img>'.format(base_url, elem)
+    return ""
+
+df_regulons = pd.DataFrame(data=[list(map(op.attrgetter('name'), regulons)),
+                                 list(map(len, regulons)),
+                                 list(map(fetch_logo, regulons))], index=['name', 'count', 'logo']).T
+    
+df_regulons.to_csv("/Users/bkim6/Desktop/Seq/pySENIC/Sub/df_regulons.csv")
+
+MAX_COL_WIDTH = pd.get_option('display.max_colwidth')
+pd.set_option('display.max_colwidth', -1)
+display(HTML(df_regulons.head().to_html(escape=False)))
+pd.set_option('display.max_colwidth', MAX_COL_WIDTH)
+
+
+# STEP 6: Non-linear projection and clustering
+
+# We capture the non-linear projection based on PCA+umap for later storage in the loom file.
+embedding_pca_umap = pd.DataFrame(adata.obsm['X_umap'], columns=[['_X', '_Y']], index=adata.obs_names)
+
+# We add all metadata derived from SCENIC to the Scanpy AnnData object.
+add_scenic_metadata(adata, auc_mtx, regulons)
+adata.write_h5ad(ANNDATA_FNAME)
+
+adata.write_csvs('/Users/bkim6/Desktop/Seq/pySENIC/Sub/sub.csv', skip_data=False)
+
+# AUCELL + umap PROJECTION
+# We change the umap projection so that it relies on AUCell instead of PCA. Cells with similar regulons will cluster together.
+sc.pp.neighbors(adata, n_pcs=50, knn=True, use_rep='X_aucell')
+sc.tl.leiden(adata, resolution=0.4)    # this 'leiden' is calculated by aucell
+sc.tl.umap(adata)
+embedding_aucell_umap = pd.DataFrame(adata.obsm['X_umap'], columns=[['_X', '_Y']], index=adata.obs_names)
+sc.pl.umap(adata, color=['cell_type'], use_raw=False, frameon=False, legend_loc='on data', title='', save=' - lungWT - AUCell_umap.svg')
+sc.pl.umap(adata, color=['pca_cell_type'], use_raw=False, frameon=False, legend_loc='right margin', title='', save=' - lungWT - pca_umap.svg')
+
+sc.pl.umap(adata, color=['leiden'], use_raw=False, frameon=False, legend_loc='right margin', title='', save=' - lungWT - AUCell2_umap_right.svg')
+sc.pl.umap(adata, color=['pca_cell_type'], use_raw=False, frameon=False, legend_loc='right margin', title='', save=' - lungKO2 - pca_umap_right.svg')
+
+sc.tl.rank_genes_groups(adata, groupby='cell_type', method='wilcoxon', use_raw=False)
+result = adata.uns['rank_genes_groups']
+groups = result['names'].dtype.names
+pd.DataFrame(
+  {group + '_' + key[:3]: result[key][group]
+    for group in groups for key in ['names', 'scores', 'logfoldchanges', 'pvals_adj']}).head(5000).to_csv("/Users/bkim6/Desktop/Seq/pySENIC/Sub/figures/lungWT_aucell_umap_markers.csv")
+
+# CELL TYPE SPECIFIC REGULATORS - Z-SCORE
+df_obs = adata.obs
+signature_column_names = list(df_obs.select_dtypes('number').columns)
+signature_column_names = list(filter(lambda s: s.startswith('Regulon('), signature_column_names))
+df_scores = df_obs[signature_column_names + ['pca_cell_type']]
+df_results = ((df_scores.groupby(by='pca_cell_type').mean() - df_obs[signature_column_names].mean())/ df_obs[signature_column_names].std()).stack().reset_index().rename(columns={'level_1': 'regulon', 0:'Z'})
+df_results['Regulon'] = list(map(lambda s: s[8:-1], df_results.regulon))
+df_results[(df_results.Z >= 1)].sort_values(['pca_cell_type', 'Z'], ascending=False)
+
+df_results[(df_results.Z >= 1)].sort_values(['pca_cell_type', 'Z'], ascending=False)
+
+df_results.to_csv('/Users/bkim6/Desktop/Seq/pySENIC/Sub/results/dfresults.csv')
+
+#process df_results with excel. leave only smad3
+df_results2 = pd.read_csv('/Users/bkim6/Desktop/Seq/pySENIC/Sub/results/dfresults2.csv')
+
+#Smad3 regulone z-score
+df_heatmap = pd.pivot_table(data=df_results2,
+                           index='pca_cell_type', columns='Regulon', values='Z')
+fig, ax = plt.subplots(1, 1, figsize=(30, 24))
+sns.heatmap(df_heatmap, ax=ax, annot=True, fmt=".1f", linewidths=.7, cbar=False, square=True, linecolor='gray', 
+            cmap="viridis", annot_kws={"size": 10})
+ax.set_ylabel('')
+savesvg('heatmap - lungWT - regulons_smad3.svg', fig)
+
