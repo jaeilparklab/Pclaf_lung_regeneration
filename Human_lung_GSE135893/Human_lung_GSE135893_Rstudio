@@ -322,6 +322,10 @@ epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_A549, name = "tgf
 
 DotPlot(epi2, features = c("KIAA0101", "DREAM_score1", "CLIC4", "tgf_A549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu")
 
+##Proliferating(PPC) subset, Fig. 4n
+
+epi_pro <- subset(epi2, idents = c("Proliferating"))
+DotPlot(epi_pro, features = c("KIAA0101", "DREAM_score1", "CLIC4", "tgf_A549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu", split.by = "disease")
 
 ##Mesenchymal analysis
 mesen <- readRDS(file = "sciadv_mesen.rds")
