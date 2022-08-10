@@ -1,0 +1,81 @@
+##Raw matrix to h5ad
+
+#PafWT
+PafWT_data <- Read10X(data.dir = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/PafWT/")
+PafWT <- CreateSeuratObject(PafWT_data, project = "PafWT", min.features = 200, min.cells = 3)
+PafWT
+
+#PafKO
+
+PafKO_data <- Read10X(data.dir = "//Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/PafKO/")
+PafKO <- CreateSeuratObject(PafKO_data, project = "PafKO", min.features = 200, min.cells = 3)
+PafKO
+
+#Integration
+lung <- merge(PafWT, y = c(PafKO))
+
+library(SeuratDisk)
+library(SeuratWrappers)
+
+SaveH5Seurat(lung, filename = "lung_raw.h5Seurat")
+Convert("lung_raw.h5Seurat", dest = "h5ad")
+
+
+##Subset matrix to h5ad
+
+Epi_sub <- subset(Epi, idents = c("AT1", "TrAT1", "AT2", "Krt8", "PPC"))
+
+Idents(Epi_sub) <- "cell_type"
+
+DimPlot(Epi_sub)
+
+Idents(Epi_sub) <- "PafID"
+
+DimPlot(Epi_sub)
+
+Epi_sub_WT <- subset(Epi_sub, idents = "PafWT")
+Epi_sub_KO <- subset(Epi_sub, idents = "PafKO")
+
+Idents(Epi_sub_WT) <- "cell_type"
+Idents(Epi_sub_KO) <- "cell_type"
+
+DimPlot(Epi_sub_WT)
+DimPlot(Epi_sub_KO)
+
+Epi_sub_WT@meta.data$cell_type <- plyr::mapvalues(x= Epi_sub_WT@meta.data$cell_type,
+                                            from=c("AT1", "PPC", "Krt8", "TrAT1", "AT2"),
+                                            to= c("AT1_WT", "PPC_WT", "Krt8_WT", "TrAT1_WT", "AT2_WT"))
+
+Epi_sub_KO@meta.data$cell_type <- plyr::mapvalues(x= Epi_sub_KO@meta.data$cell_type,
+                                                  from=c("AT1", "PPC", "Krt8", "TrAT1", "AT2"),
+                                                  to= c("AT1_KO", "PPC_KO", "Krt8_KO", "TrAT1_KO", "AT2_KO"))
+
+Idents(Epi_sub_WT) <- "cell_type"
+Idents(Epi_sub_KO) <- "cell_type"
+
+DimPlot(Epi_sub_WT)
+DimPlot(Epi_sub_KO)
+
+Epi_sub_merge <- merge(Epi_sub_WT, y = c(Epi_sub_KO))
+
+Epi_sub_merge <- NormalizeData(Epi_sub_merge, normalization.method = "LogNormalize", scale.factor = 10000)
+Epi_sub_merge <- FindVariableFeatures(Epi_sub_merge, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(Epi_sub_merge)
+Epi_sub_merge <- ScaleData(Epi_sub_merge, features = all.genes)
+Epi_sub_merge <- RunPCA(Epi_sub_merge, features = VariableFeatures(object = Epi_sub_merge))
+Epi_sub_merge <- JackStraw(Epi_sub_merge, num.replicate = 100)
+Epi_sub_merge <- ScoreJackStraw(Epi_sub_merge, dims = 1:20)
+Epi_sub_merge <- FindNeighbors(Epi_sub_merge, dims = 1:20)
+Epi_sub_merge <- FindClusters(Epi_sub_merge, resolution = 1)
+Epi_sub_merge <- RunUMAP(Epi_sub_merge, dims = 1:20)
+
+DimPlot(Epi_sub_merge)
+Idents(Epi_sub_merge) <- "cell_type"
+DimPlot(Epi_sub_merge, label = TRUE)
+
+
+library(SeuratDisk)
+library(SeuratWrappers)
+
+SaveH5Seurat(Epi_sub_merge, filename = "Epi_sub.h5Seurat")
+Convert("Epi_sub.h5Seurat", dest = "h5ad")
