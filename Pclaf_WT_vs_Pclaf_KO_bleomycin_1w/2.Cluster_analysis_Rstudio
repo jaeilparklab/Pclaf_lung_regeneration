@@ -20,7 +20,11 @@ DoHeatmap(
   group.colors = NULL,
   draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
   
-##DimPlots, Extended Data Fig. 6a, and Fig. 2b
+##DimPlots, Extended Data Fig. 6a, Fig. 2a, and Fig. 2b
+
+Idents(Epi) <- "PafID"
+
+DimPlot(Epi)
 
 Idents(Epi) <- "cell_type"
 
@@ -59,3 +63,5 @@ FeaturePlot(object = Epi,
 ##DREAM target gene module score, Fig. 3d
 Epi <- AddModuleScore(object = Epi, features = gene_list_DREAM, name = "DREAM_score")
 DotPlot(Epi, feature = "DREAM_score1", split.by = "PafID", cols = "RdYlBu")
+
+
