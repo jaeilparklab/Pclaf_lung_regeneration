@@ -174,3 +174,10 @@ ggplot(fgseaResTidy_PPC %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
                ranks_PPC) + labs(title="FISCHER_DREAM_TARGETS_PPC")
   plotEnrichment(fgsea_sets[["KOINUMA_TARGETS_OF_SMAD2_OR_SMAD3"]],
                ranks_PPC) + labs(title="KOINUMA_TARGETS_OF_SMAD2_OR_SMAD3")
+
+##Smad3 target genes, Fig. 4d
+
+Epi <- AddModuleScore(object = Epi, features = gene_list_tgf_target_a549, name = "tgf_a549_score")
+Epi <- AddModuleScore(object = Epi, features = gene_list_tgf_mES, name = "tgf_mES_score")
+Epi <- AddModuleScore(object = Epi, features = gene_list_tgf_hES, name = "tgf_hES_score")
+DotPlot(Epi, features = c("tgf_a549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu", split.by = "PafID", scale.min = 0) 
