@@ -21,7 +21,55 @@ SaveH5Seurat(lung, filename = "lung_raw.h5Seurat")
 Convert("lung_raw.h5Seurat", dest = "h5ad")
 
 
-##Subset matrix to h5ad
+##Subset matrix to h5ad for RNA velocity
+
+
+Epi_sub <- subset(Epi, idents = c("AT1", "TrAT1", "Krt8", "AT2", "AT2_2", "PPC"))
+
+
+DimPlot(Epi_sub)
+Idents(Epi_sub) <- "PafID"
+
+WT <- subset(Epi_sub, idents = "PafWT")
+KO <- subset(Epi_sub, idents = "PafKO")
+
+WT <- NormalizeData(WT, normalization.method = "LogNormalize", scale.factor = 10000)
+WT <- FindVariableFeatures(WT, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(WT)
+WT <- ScaleData(WT, features = all.genes)
+WT <- RunPCA(WT, features = VariableFeatures(object = WT))
+WT <- JackStraw(WT, num.replicate = 100)
+WT <- ScoreJackStraw(WT, dims = 1:20)
+WT <- FindNeighbors(WT, dims = 1:20)
+WT <- FindClusters(WT, resolution = 1)
+WT <- RunUMAP(WT, dims = 1:20)
+
+KO <- NormalizeData(KO, normalization.method = "LogNormalize", scale.factor = 10000)
+KO <- FindVariableFeatures(KO, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(KO)
+KO <- ScaleData(KO, features = all.genes)
+KO <- RunPCA(KO, features = VariableFeatures(object = KO))
+KO <- JackStraw(KO, num.replicate = 100)
+KO <- ScoreJackStraw(KO, dims = 1:20)
+KO <- FindNeighbors(KO, dims = 1:20)
+KO <- FindClusters(KO, resolution = 1)
+KO <- RunUMAP(KO, dims = 1:20)
+
+Idents(WT) <- "cell_type"
+Idents(KO) <- "cell_type"
+
+
+library(SeuratDisk)
+library(SeuratWrappers)
+
+SaveH5Seurat(WT, filename = "WT.h5Seurat")
+Convert("WT.h5Seurat", dest = "h5ad")
+
+SaveH5Seurat(KO, filename = "KO.h5Seurat")
+Convert("KO.h5Seurat", dest = "h5ad")
+
+
+##Subset matrix to h5ad for pySCENIC
 
 Epi_sub <- subset(Epi, idents = c("AT1", "TrAT1", "AT2", "Krt8", "PPC"))
 
