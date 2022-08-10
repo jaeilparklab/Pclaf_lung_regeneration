@@ -64,4 +64,113 @@ FeaturePlot(object = Epi,
 Epi <- AddModuleScore(object = Epi, features = gene_list_DREAM, name = "DREAM_score")
 DotPlot(Epi, feature = "DREAM_score1", split.by = "PafID", cols = "RdYlBu")
 
+##Wnt target gene, Extended Data Fig. 8a
+DotPlot(Epi, features = c("Axin2", "Myc", "Ascl2"), cols = "RdYlBu", split.by = "PafID")
 
+DotPlot(Epi, features = c("Cd44", "Ccnd1", "Jag1", "Bmp4", "Met"), cols = "RdYlBu", split.by = "PafID")
+
+##Sox9-based progenitor gene signature, Extended Data Fig. 8b
+Epi <- AddModuleScore(object = Epi, features = progenitor_signature, name = "progenitor_score")
+
+DotPlot(Epi, features = "progenitor_score1", cols = "RdYlBu", split.by = "PafID")
+
+##Myc-target gene, Extended Data Fig. 8c
+Epi <- AddModuleScore(object = Epi, features = gene_list_Myc, name = "Myc_score")
+
+DotPlot(Epi, feature = c("Myc", "Max", "Myc_score1"), split.by = "PafID", cols = "RdYlBu", scale.min = 0)
+
+##GSEA analysis, Fig. 3c, Extended Data Fig. 7b, Fig. 4e
+
+library(presto)
+library(fgsea)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(msigdbr)
+library(openxlsx)
+
+#PPC subset
+Epi_PPC <- subset(Epi, idents = "PPC")
+Idents(Epi_PPC) <- "PafID"
+
+#msigdbr database
+msigdbr_species()
+
+m_df<- msigdbr(species = "Mus musculus", category = "C2")
+
+head(m_df)
+
+fgsea_sets<- m_df %>% split(x = m_df$gene_symbol, f = m_df$gs_name)
+
+#wilcoxauc
+Epi_PPC.genes <- wilcoxauc(Epi_PPC, 'PafID')
+
+head(Epi_PPC.genes)
+
+
+Epi_PPC.genes <- Epi_PPC.genes %>%
+  filter(!logFC %in% c('0'))
+
+dplyr::count(Epi_PPC.genes, group)
+
+##12176 genes
+
+
+Epi_PPC.genes %>%
+  dplyr::filter(group == "PafWT") %>%
+  arrange(desc(logFC), desc(auc)) %>%
+  head(n = 10)
+
+Epi_PPC.genes <- Epi_PPC.genes %>% 
+  dplyr::filter(group == "PafWT") %>%
+  arrange(desc(auc)) %>% 
+  dplyr::select(feature, auc)
+
+write.xlsx(Epi_PPC.genes, file = "Epi_PPC.genes.xlsx")
+
+
+ranks_PPC <- deframe(Epi_PPC.genes)
+head(ranks_PPC)
+
+#Positive pathway(C2)
+
+fgseaRes_PPC <- fgsea(fgsea_sets, stats = ranks_PPC, nperm = 10000)
+
+fgseaResTidy_PPC <- fgseaRes_PPC %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fgseaResTidy_PPC %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(desc(NES)) %>% 
+  DT::datatable()
+
+ggplot(fgseaResTidy_PPC %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill= padj<0.01)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="C2 pathways NES from GSEA_Pos") + 
+  theme_minimal()
+
+#negative pathway (C2)
+fgseaResTidy_PPC <- fgseaRes_PPC %>%
+  as_tibble() %>%
+  arrange(NES)
+
+fgseaResTidy_PPC %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(NES) %>% 
+  DT::datatable()
+
+ggplot(fgseaResTidy_PPC %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill= padj<0.01)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="C2 pathways NES from GSEA_Neg") + 
+  theme_minimal()
+  
+  #GSEA plot
+  plotEnrichment(fgsea_sets[["FISCHER_DREAM_TARGETS"]],
+               ranks_PPC) + labs(title="FISCHER_DREAM_TARGETS_PPC")
+  plotEnrichment(fgsea_sets[["KOINUMA_TARGETS_OF_SMAD2_OR_SMAD3"]],
+               ranks_PPC) + labs(title="KOINUMA_TARGETS_OF_SMAD2_OR_SMAD3")
