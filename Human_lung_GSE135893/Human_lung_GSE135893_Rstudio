@@ -301,7 +301,7 @@ epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
                                                 "cHP",
                                                 "cHP"))
 
-## Extended Data Figure 10a, 10b, and 10c
+## Fig. 4o and 4p
 Idents(epi2) <- "celltype"
 
 DimPlot(epi2, pt.size = 0.01)
@@ -316,18 +316,19 @@ DimPlot(epi2, split.by = "disease", pt.size = 0.5)
 
 epi2 <- AddModuleScore(object = epi2, features = gene_list_DREAM, name = "DREAM_score")
 
-epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_mES, name = "tgf_mES_score")
 epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_hES, name = "tgf_hES_score")
-epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_A549, name = "tgf_A549_score")
 
-DotPlot(epi2, features = c("KIAA0101", "DREAM_score1", "CLIC4", "tgf_A549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu")
+sub <- subset(epi2, idents = c("Proliferating", "AT1", "AT2", "Transitional AT2"))
 
-##Proliferating(PPC) subset, Fig. 4n
 
-epi_pro <- subset(epi2, idents = c("Proliferating"))
-DotPlot(epi_pro, features = c("KIAA0101", "DREAM_score1", "CLIC4", "tgf_A549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu", split.by = "disease")
+my_levels <- c("AT2", "Proliferating", "Transitional AT2", "AT1")
+sub@meta.data$celltype <- factor(x = sub@meta.data$celltype, levels = my_levels)
+Idents(sub) <- "celltype"
 
-##Mesenchymal analysis
+VlnPlot(sub, features = c("DREAM_score1", "CLIC4", "tgf_hES_score1"), 
+        ncol = 2, split.by = "disease", pt.size = 0.01)
+
+##Mesenchymal analysis Fig.10 g-j
 mesen <- readRDS(file = "sciadv_mesen.rds")
 
 mesen <- FindVariableFeatures(mesen, selection.method = "mesen", nfeatures = 3000)
