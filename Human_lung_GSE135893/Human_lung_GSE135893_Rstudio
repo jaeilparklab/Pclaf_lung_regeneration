@@ -318,15 +318,11 @@ epi2 <- AddModuleScore(object = epi2, features = gene_list_DREAM, name = "DREAM_
 
 epi2 <- AddModuleScore(object = epi2, features = gene_list_tgf_hES, name = "tgf_hES_score")
 
-sub <- subset(epi2, idents = c("Proliferating", "AT1", "AT2", "Transitional AT2"))
+sub <- subset(epi2, idents = c("Proliferating"))
 
-
-my_levels <- c("AT2", "Proliferating", "Transitional AT2", "AT1")
-sub@meta.data$celltype <- factor(x = sub@meta.data$celltype, levels = my_levels)
-Idents(sub) <- "celltype"
 
 VlnPlot(sub, features = c("DREAM_score1", "CLIC4", "tgf_hES_score1"), 
-        ncol = 2, split.by = "disease", pt.size = 0.01)
+        ncol = 1, group.by = "disease")
 
 ##Mesenchymal analysis Fig.10 g-j
 mesen <- readRDS(file = "sciadv_mesen.rds")
