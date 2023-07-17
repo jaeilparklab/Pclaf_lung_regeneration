@@ -1,5 +1,5 @@
               
-##Select Top40 DEG among DREAM-target genes, Fig. 4a
+##Select Top40 DEG among DREAM-target genes, Supplementary Fig. 13a
 Epi_PPC.genes <- wilcoxauc(Epi_PPC, 'PafID')
 
 head(Epi_PPC.genes)
