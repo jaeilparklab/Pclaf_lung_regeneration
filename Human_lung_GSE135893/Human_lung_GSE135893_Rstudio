@@ -135,7 +135,7 @@ my_levels <- c("AT1", "Transitional AT2", "AT2", "SCGB3A2+/SCGB1A1+", "SCGB3A2+"
 epi2@meta.data$celltype <- factor(x = epi2@meta.data$celltype, levels = my_levels)
 
 Idents(epi2) <- "celltype"
-DimPlot(epi2)
+DimPlot_scCustom(seurat_object = epi2, label = FALSE, pt.size = 0.1)
 
 #Marker gene expression, Supplementary table 2
 lung.markers <- FindAllMarkers(epi2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
@@ -145,10 +145,13 @@ saveRDS(lung.markers, file = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/l
 library(openxlsx)
 write.xlsx(lung.markers, file = "lung_markers_sciadv_20220522.xlsx")
 
-## Extended Data Fig. 2b, 2e, and 2f
+## Supplementary Fig. 1b, e, and f
 lung.markers %>%
   group_by(cluster) %>%
   top_n(n = 10, wt = avg_log2FC) -> top10
+
+pal <- DiscretePalette_scCustomize(num_colors = 36, palette = "polychrome",
+                                   shuffle_pal = FALSE)
 
 DoHeatmap(
   epi2,
@@ -156,7 +159,7 @@ DoHeatmap(
   size = 8,
   group.by = "celltype2",
   group.bar = TRUE,
-  group.colors = NULL,
+  group.colors = pal,
   draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
 
 DotPlot(epi2, features = c("KIAA0101",
@@ -189,19 +192,31 @@ FeaturePlot(object = epi3,
             cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
 
 
-##PPC(PCLAF+), Extended Data Fig. 2e and 2f
+##PAPC (PCLAF+), Fig. 1e and f
 DotPlot(epi2, features = c("KIAA0101", "MKI67", "TOP2A"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
 
 FeaturePlot(epi2, c("KIAA0101"), split.by = "Status", pt.size = 0.5, cols = c("lightgray", "Red"))
 
-##DREAM target gene, Fig. 3b
+##DREAM target gene, Fig. 4b
 epi2 <- AddModuleScore(object = epi2, features = gene_list_DREAM, name = "DREAM_score")
 
 DotPlot(epi2, features = c("DREAM_score1"), cols = "RdYlBu")
 
+##PAPC subset, Supplementary Fig. 8c and d
+
+PAPC <- subset(epi2, idents = "Proliferating")
+
+DimPlot(PPC_sciadv)
+
+FeaturePlot_scCustom(seurat_object = PAPC,
+                     features = c("SFTPC", "SCGB1A1", "KRT5"),
+                     na_cutoff = 0.001,
+                     na_color = "lightgrey",
+                     colors_use = pal,
+                     num_columns = 3)
+
+
 ##Disease type analysis
-
-
 
 epi2@meta.data$disease <- epi2@meta.data$orig.ident
 
@@ -304,7 +319,7 @@ epi2@meta.data$disease <- plyr::mapvalues(x= epi2@meta.data$disease,
                                                 "cHP",
                                                 "cHP"))
 
-## Fig. 4o and 4p
+## Fig. 5n and o
 Idents(epi2) <- "celltype"
 
 DimPlot(epi2, pt.size = 0.01)
@@ -315,7 +330,7 @@ epi2@meta.data$disease <- factor(x = epi2@meta.data$disease, levels = my_levels)
 Idents(epi2) <- "disease"
 Idents(epi2) <- "celltype"
 
-DimPlot(epi2, split.by = "disease", pt.size = 0.5)
+DimPlot_scCustom(seurat_object = epi2, label = FALSE, pt.size = 0.5, split.by = "disease")
 
 epi2 <- AddModuleScore(object = epi2, features = gene_list_DREAM, name = "DREAM_score")
 
@@ -327,7 +342,7 @@ sub <- subset(epi2, idents = c("Proliferating"))
 VlnPlot(sub, features = c("DREAM_score1", "CLIC4", "tgf_hES_score1"), 
         ncol = 1, group.by = "disease")
 
-##Mesenchymal analysis Fig.10 g-j
+##Mesenchymal analysis, Supplementary Fig.17
 mesen <- readRDS(file = "sciadv_mesen.rds")
 
 mesen <- FindVariableFeatures(mesen, selection.method = "mesen", nfeatures = 3000)
