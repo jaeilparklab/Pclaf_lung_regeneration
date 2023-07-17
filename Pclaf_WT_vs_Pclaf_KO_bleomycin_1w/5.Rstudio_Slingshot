@@ -1,0 +1,204 @@
+##Subset of alveolar cells
+Epi_sub <- subset(Epi, idents = c("AT1", "AT2_2", "AT2", "TrAT1", "Krt8", "PPC"))
+
+Idents(Epi_sub) <- "PafID"
+DimPlot(Epi_sub)
+
+Epi_subwt <- subset(Epi_sub, idents = "PafWT")
+Epi_subko <- subset(Epi_sub, idents = "PafKO")
+
+Epi_subwt <- NormalizeData(Epi_subwt, normalization.method = "LogNormalize", scale.factor = 10000)
+Epi_subwt <- NormalizeData(Epi_subwt)
+Epi_subwt <- FindVariableFeatures(Epi_subwt, selection.method = "vst", nfeatures = 3000)
+Epi_subwt <- RunPCA(Epi_subwt)
+Epi_subwt <- RunUMAP(Epi_subwt, dims = 1:5)
+
+Epi_subko <- NormalizeData(Epi_subko, normalization.method = "LogNormalize", scale.factor = 10000)
+Epi_subko <- NormalizeData(Epi_subko)
+Epi_subko <- FindVariableFeatures(Epi_subko, selection.method = "vst", nfeatures = 3000)
+Epi_subko <- RunPCA(Epi_subko)
+Epi_subko <- RunUMAP(Epi_subko, dims = 1:5)
+
+# ======================================
+# Convert to SingleCellExperiment
+# ======================================
+scewt <- as.SingleCellExperiment(Epi_subwt)
+sceko <- as.SingleCellExperiment(Epi_subko)
+
+# Dimentionality reduction
+onion2 <- scewt@int_colData$reducedDims@listData$PCA[,1:5]
+scewt@int_colData$reducedDims@listData$PCA <- onion2
+
+onion2 <- sceko@int_colData$reducedDims@listData$PCA[,1:5]
+sceko@int_colData$reducedDims@listData$PCA <- onion2
+
+# Remove mitochondria and ribosomal genes
+temp2 <- grep( "^mt-", rownames(scewt), ignore.case = F, value = T)
+scewt <- scewt[!rownames(scewt) %in% temp2,]
+temp2 <- grep( "^rp", rownames(scewt), ignore.case = F, value = T)
+scewt <- scewt[!rownames(scewt) %in% temp2,]
+
+temp2 <- grep( "^mt-", rownames(sceko), ignore.case = F, value = T)
+sceko <- sceko[!rownames(sceko) %in% temp2,]
+temp2 <- grep( "^rp", rownames(sceko), ignore.case = F, value = T)
+sceko <- sceko[!rownames(sceko) %in% temp2,]
+
+## Run Slingshot (From AT2 cells (AT2_2))
+slingshot_wt <- slingshot(scewt, clusterLabels = "cell_type", reducedDim = 'UMAP',
+                          start.clus="AT2_2")
+
+slingshot_ko <- slingshot(sceko, clusterLabels = "cell_type", reducedDim = 'UMAP',
+                          start.clus="AT2_2")
+
+print(SlingshotDataSet(slingshot_wt))
+print(SlingshotDataSet(slingshot_ko))
+
+# Plot the trajectory WT
+#Color
+
+epi_col <- c("AT1"="#5A5156FF","AT2"="#F6222EFF", "Krt8"="#FE00FAFF",
+             "AT2_2" = "#16FF32FF", "TrAT1" = "#3283FEFF", "PPC" = "#FEAF16FF")
+
+sce_color <- as.character(Epi_subwt@meta.data$cell_type)
+sce_color <- setNames(sce_color, rownames(Epi_subwt@meta.data))
+
+onion <- sce_color
+
+onion[onion == "AT1"] <- "#5A5156FF"
+onion[onion == "AT2"] <- "#F6222EFF"
+onion[onion == "Krt8"] <- "#FE00FAFF"
+onion[onion == "AT2_2"] <- "#16FF32FF"
+onion[onion == "TrAT1"] <- "#3283FEFF"
+onion[onion == "PPC"] <- "#FEAF16FF"
+
+sce_color <- onion
+
+#PLOT
+plot(reducedDims(slingshot_wt)$UMAP, col = sce_color,
+     pch = 16, asp = 1, xlab = "UMAP_1", ylab = "UMAP_2", cex=0.6)
+
+lines(slingCurves(slingshot_wt)$curve1, lwd=3)
+lines(slingCurves(slingshot_wt)$curve2, lwd=3)
+
+plot.new()
+legend(par(xpd = T), x= "topleft", pch = c(20), 
+       legend = c("AT1", "AT2", "Krt8",
+                  "AT2_2", "TrAT1", "PPC"),
+       col = c("#5A5156FF", "#F6222EFF", "#FE00FAFF",
+               "#16FF32FF", "#3283FEFF", "#FEAF16FF"), bty = 'n')
+
+# Plot the trajectory KO
+#Color
+
+epi_col <- c("AT1"="#5A5156FF","AT2"="#F6222EFF", "Krt8"="#FE00FAFF",
+             "AT2_2" = "#16FF32FF", "TrAT1" = "#3283FEFF", "PPC" = "#FEAF16FF")
+
+sce_color <- as.character(Epi_subko@meta.data$cell_type)
+sce_color <- setNames(sce_color, rownames(Epi_subko@meta.data))
+
+onion <- sce_color
+
+onion[onion == "AT1"] <- "#5A5156FF"
+onion[onion == "AT2"] <- "#F6222EFF"
+onion[onion == "Krt8"] <- "#FE00FAFF"
+onion[onion == "AT2_2"] <- "#16FF32FF"
+onion[onion == "TrAT1"] <- "#3283FEFF"
+onion[onion == "PPC"] <- "#FEAF16FF"
+
+sce_color <- onion
+
+#PLOT
+plot(reducedDims(slingshot_ko)$UMAP, col = sce_color,
+     pch = 16, asp = 1, xlab = "UMAP_1", ylab = "UMAP_2", cex=0.6)
+
+
+lines(slingCurves(slingshot_ko)$curve1, lwd=3)
+lines(slingCurves(slingshot_ko)$curve2, lwd=3)
+
+plot.new()
+legend(par(xpd = T), x= "topleft", pch = c(20), 
+       legend = c("AT1", "AT2", "Krt8",
+                  "AT2_2", "TrAT1", "PPC"),
+       col = c("#5A5156FF", "#F6222EFF", "#FE00FAFF",
+               "#16FF32FF", "#3283FEFF", "#FEAF16FF"), bty = 'n')
+
+# Run Slingshot (From Activated AT2 cells (AT2))
+slingshot_wt <- slingshot(scewt, clusterLabels = "cell_type", reducedDim = 'UMAP',
+                          start.clus="AT2")
+
+slingshot_ko <- slingshot(sceko, clusterLabels = "cell_type", reducedDim = 'UMAP',
+                          start.clus="AT2")
+
+print(SlingshotDataSet(slingshot_wt))
+print(SlingshotDataSet(slingshot_ko))
+
+# Plot the trajectory WT
+#Color
+
+epi_col <- c("AT1"="#5A5156FF","AT2"="#F6222EFF", "Krt8"="#FE00FAFF",
+             "AT2_2" = "#16FF32FF", "TrAT1" = "#3283FEFF", "PPC" = "#FEAF16FF")
+
+sce_color <- as.character(Epi_subwt@meta.data$cell_type)
+sce_color <- setNames(sce_color, rownames(Epi_subwt@meta.data))
+
+onion <- sce_color
+
+onion[onion == "AT1"] <- "#5A5156FF"
+onion[onion == "AT2"] <- "#F6222EFF"
+onion[onion == "Krt8"] <- "#FE00FAFF"
+onion[onion == "AT2_2"] <- "#16FF32FF"
+onion[onion == "TrAT1"] <- "#3283FEFF"
+onion[onion == "PPC"] <- "#FEAF16FF"
+
+sce_color <- onion
+
+#PLOT
+plot(reducedDims(slingshot_wt)$UMAP, col = sce_color,
+     pch = 16, asp = 1, xlab = "UMAP_1", ylab = "UMAP_2", cex=0.6)
+
+
+lines(slingCurves(slingshot_wt)$curve1, lwd=3)
+lines(slingCurves(slingshot_wt)$curve2, lwd=3)
+lines(slingCurves(slingshot_wt)$curve3, lwd=3)
+
+plot.new()
+legend(par(xpd = T), x= "topleft", pch = c(20), 
+       legend = c("AT1", "AT2", "Krt8",
+                  "AT2_2", "TrAT1", "PPC"),
+       col = c("#5A5156FF", "#F6222EFF", "#FE00FAFF",
+               "#16FF32FF", "#3283FEFF", "#FEAF16FF"), bty = 'n')
+
+# Plot the trajectory KO
+#Color
+
+epi_col <- c("AT1"="#5A5156FF","AT2"="#F6222EFF", "Krt8"="#FE00FAFF",
+             "AT2_2" = "#16FF32FF", "TrAT1" = "#3283FEFF", "PPC" = "#FEAF16FF")
+
+sce_color <- as.character(Epi_subko@meta.data$cell_type)
+sce_color <- setNames(sce_color, rownames(Epi_subko@meta.data))
+
+onion <- sce_color
+
+onion[onion == "AT1"] <- "#5A5156FF"
+onion[onion == "AT2"] <- "#F6222EFF"
+onion[onion == "Krt8"] <- "#FE00FAFF"
+onion[onion == "AT2_2"] <- "#16FF32FF"
+onion[onion == "TrAT1"] <- "#3283FEFF"
+onion[onion == "PPC"] <- "#FEAF16FF"
+
+sce_color <- onion
+
+#PLOT
+plot(reducedDims(slingshot_ko)$UMAP, col = sce_color,
+     pch = 16, asp = 1, xlab = "UMAP_1", ylab = "UMAP_2", cex=0.6)
+
+
+lines(slingCurves(slingshot_ko)$curve1, lwd=3)
+
+
+plot.new()
+legend(par(xpd = T), x= "topleft", pch = c(20), 
+       legend = c("AT1", "AT2", "Krt8",
+                  "AT2_2", "TrAT1", "PPC"),
+       col = c("#5A5156FF", "#F6222EFF", "#FE00FAFF",
+               "#16FF32FF", "#3283FEFF", "#FEAF16FF"), bty = 'n')
