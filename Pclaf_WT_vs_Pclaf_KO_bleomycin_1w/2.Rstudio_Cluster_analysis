@@ -1,4 +1,4 @@
-##Marker Supplementary table 3, Extended Data Fig. 5b
+##Marker Supplementary table 3, Supplementary Fig. 6b
 lung.markers <- FindAllMarkers(Epi, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
 saveRDS(lung.markers, file = "/Users/bkim6/Desktop/LAB/Seq/R/PafWT_PafKO_lung_bleo1w/analysis/lung.markers.rds")
@@ -10,6 +10,8 @@ lung.markers %>%
   group_by(cluster) %>%
   top_n(n = 10, wt = avg_log2FC) -> top10
 
+pal <- DiscretePalette_scCustomize(num_colors = 36, palette = "polychrome",
+                                   shuffle_pal = TRUE)
 
 DoHeatmap(
   Epi,
@@ -17,10 +19,10 @@ DoHeatmap(
   size = 8,
   group.by = "cell_type",
   group.bar = TRUE,
-  group.colors = NULL,
+  group.colors = pal,
   draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
   
-##DimPlots, Extended Data Fig. 6a, Fig. 2a, and Fig. 2b
+##DimPlots, Supplementary Fig. 7a, Fig. 3a and b
 
 Idents(Epi) <- "PafID"
 
@@ -30,19 +32,11 @@ Idents(Epi) <- "cell_type"
 
 DimPlot(Epi)
 
-DimPlot(Epi, split.by = "PafID")
+DimPlot_scCustom(seurat_object = Epi, label = FALSE, pt.size = 0.5,
+                 split.by = "PafID", shuffle = TRUE)
 
-##cell proportion test, Fig. 2c
-library(scProportionTest)
-prop_test <- sc_utils(Epi)
 
-prop_test <- permutation_test(
-  prop_test, cluster_identity = "cell_type",
-  sample_1 = "PafWT", sample_2 = "PafKO",
-  sample_identity = "PafID")
-permutation_plot(prop_test)
-
-##Marker genes, Extended Data Fig. 6b, and 6c
+##Marker genes, Supplementary Fig. 7b and c
 
 gene_list_marker <- c("Pclaf", "Mki67", "Ager","Cldn18", "Sftpc", "Sftpa1", "Krt8", "Scgb1a1", "Scgb3a2", "Foxj1", "Ccdc153", "Scgb3a1", "Reg3g", "Chga", "Calca", "Krt5", "Trp63", "Cd200", "Itgb4")
 
@@ -52,7 +46,7 @@ FeaturePlot(object = Epi,
             features = c("Pclaf", "Mki67", "Ager", "Sftpc", "Krt8", "Scgb1a1", "Foxj1", "Scgb3a1", "Krt5"),
             cols = c("lightgray", "Red"), pt.size = 0.2)
 
-##Specify of AT2 cells, Extended Data Fig. 6d, and 6e
+##Specify of AT2 cells, Extended Data Fig. 7d, and 7e
 
 DotPlot(Epi, feature = c("Sftpc", "Sftpa1", "Tmsb4x", "Lyz2", "Cxcl15", "Lcn2", "Slc34a2", "Hc", "Sftpb", "Lamp3"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
 
@@ -60,26 +54,40 @@ FeaturePlot(object = Epi,
             features = c("Lcn2", "Slc34a2"),
             cols = c("lightgray", "Red"), pt.size = 0.2)
 
-##DREAM target gene module score, Fig. 3d
+##DREAM target gene module score, Fig. 4d
 Epi <- AddModuleScore(object = Epi, features = gene_list_DREAM, name = "DREAM_score")
 DotPlot(Epi, feature = "DREAM_score1", split.by = "PafID", cols = "RdYlBu")
 
-##Wnt target gene, Extended Data Fig. 8a
+##PAPC subset, Supplementary Fig. 8e and f
+
+PAPC <- subset(Epi, idents = "PPC")
+
+DimPlot(PAPC)
+
+FeaturePlot_scCustom(seurat_object = PAPC,
+                     features = c("Sftpc", "Scgb1a1", "Krt5"),
+                     na_cutoff = 0.001,
+                     na_color = "lightgrey",
+                     colors_use = pal,
+                     num_columns = 3,
+                     pt.size = 1)
+
+##Wnt target gene, Supplementary Fig. 12a
 DotPlot(Epi, features = c("Axin2", "Myc", "Ascl2"), cols = "RdYlBu", split.by = "PafID")
 
 DotPlot(Epi, features = c("Cd44", "Ccnd1", "Jag1", "Bmp4", "Met"), cols = "RdYlBu", split.by = "PafID")
 
-##Sox9-based progenitor gene signature, Extended Data Fig. 8b
+##Sox9-based progenitor gene signature, Supplementary Fig. 12b
 Epi <- AddModuleScore(object = Epi, features = progenitor_signature, name = "progenitor_score")
 
 DotPlot(Epi, features = "progenitor_score1", cols = "RdYlBu", split.by = "PafID")
 
-##Myc-target gene, Extended Data Fig. 8c
+##Myc-target gene, Supplementary Fig. 12c
 Epi <- AddModuleScore(object = Epi, features = gene_list_Myc, name = "Myc_score")
 
 DotPlot(Epi, feature = c("Myc", "Max", "Myc_score1"), split.by = "PafID", cols = "RdYlBu", scale.min = 0)
 
-##GSEA analysis, Fig. 3c, Extended Data Fig. 7b, Fig. 4e
+##GSEA analysis, Fig. 4c, Supplementary Fig. 10b, Supplementary Fig. 14c
 
 library(presto)
 library(fgsea)
@@ -175,14 +183,14 @@ ggplot(fgseaResTidy_PPC %>% head(n= 20), aes(reorder(pathway, NES), NES)) +
   plotEnrichment(fgsea_sets[["KOINUMA_TARGETS_OF_SMAD2_OR_SMAD3"]],
                ranks_PPC) + labs(title="KOINUMA_TARGETS_OF_SMAD2_OR_SMAD3")
 
-##Smad3 target genes, Fig. 4d
+##Smad3 target genes, Fig. 5d
 
 Epi <- AddModuleScore(object = Epi, features = gene_list_tgf_target_a549, name = "tgf_a549_score")
 Epi <- AddModuleScore(object = Epi, features = gene_list_tgf_mES, name = "tgf_mES_score")
 Epi <- AddModuleScore(object = Epi, features = gene_list_tgf_hES, name = "tgf_hES_score")
 DotPlot(Epi, features = c("tgf_a549_score1", "tgf_mES_score1", "tgf_hES_score1"), cols = "RdYlBu", split.by = "PafID", scale.min = 0) 
 
-##CytoTrace, Fig. 2g
+##CytoTrace, Fig. 3g
 library(Seurat)
 library(reticulate)
 library(CytoTRACE)
