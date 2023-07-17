@@ -6,6 +6,9 @@ library(genefilter)
 library(BiocParallel)
 library(patchwork)
 library(ggplot2)
+library(scCustomize)
+library(RColorBrewer)
+library(viridis)
 
 ##Read matrix
 
@@ -134,7 +137,7 @@ table(lung@meta.data$cell_type)
 ##Goblet      Proliferation              Basal 
 ##736               1331                323 
 
-##Cluster marker gene_Supplementary table 1, Extended Data Fig. 2a
+##Cluster marker gene_Supplementary table 1, Supplementary Fig. 1a
 
 lung.markers <- FindAllMarkers(lung, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
@@ -148,21 +151,24 @@ lung.markers %>%
   top_n(n = 10, wt = avg_log2FC) -> top10
 DoHeatmap(lung, features = top10$gene)
 
+pal <- DiscretePalette_scCustomize(num_colors = 36, palette = "polychrome",
+                                   shuffle_pal = FALSE)
+
 DoHeatmap(
   lung,
   features = top10$gene,
   size = 8,
   group.by = "cell_type",
   group.bar = TRUE,
-  group.colors = NULL,
+  group.colors = pal,
   draw.lines = TRUE) + scale_fill_gradientn(colors = c("blue", "white", "red"))
 
-## Extended Data Fig.1a
+## Fig.1a
 
 my_levels <- c("AT1", "Activated AT2", "Krt8+", "AT2", "Club", "Activated Club", "Club to Ciliated", "Ciliated", "Activated Ciliated", "Neuroendocrine", "Goblet", "Proliferation", "Basal")
 lung@meta.data$cell_type <- factor(x = lung@meta.data$cell_type, levels = my_levels)
 Idents(lung) <- "cell_type"
-DimPlot(lung)
+DimPlot_scCustom(seurat_object = lung, label = FALSE, pt.size = 0.1)
 
 
 ## Bleomycin dpi information
@@ -187,13 +193,13 @@ lung@meta.data$bleoID_simple <- factor(x = lung@meta.data$bleoID_simple, levels 
 Idents(object = lung) <- "bleoID_simple"
 DimPlot(lung, label = F)
 
-##Pclaf+ cells by bleomycin dpi Extended Data Fig. 1g
+##Pclaf+ cells by bleomycin dpi Fig. 1g
 FeaturePlot(lung, split.by = "bleoID_stage", 
             features = c("2810417H13Rik"), pt.size = 0.2,
             cols = c("lightgray", "Red"))
 
 
-#Marker gene: FeaturePlot and DotPlot, Extended Data Fig 2c and d
+#Marker gene: FeaturePlot and DotPlot, Supplementary Fig 1c and d
 FeaturePlot(object = lung, 
             features = c("2810417H13Rik",
                          "Mki67", 
@@ -209,16 +215,27 @@ FeaturePlot(object = lung,
 
 DotPlot(lung, features = c("2810417H13Rik", "Mki67", "Ager","Cldn18", "Sftpc", "Foxj1", "Ccdc153", "Scgb1a1", "Scgb3a2", "Scgb3a1", "Reg3g", "Chga", "Calca", "Krt5", "Trp63", "Cd200", "Itgb4"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
 
-#Proliferation cell (PPCs) marker, Extended Data Fig. 1b and 1c
+#Proliferation cell (PAPC, Proliferating Alveolar Progenitor Cells) marker, Fig. 1b and 1c
 FeaturePlot(object = lung, 
             features = c("2810417H13Rik"),
             cols = c("lightgray", "Red"), pt.size = 0.2, repel = TRUE)
 DotPlot(lung, features = c("2810417H13Rik", "Mki67", "Top2a"), cols = "RdYlBu") +coord_flip() + theme(axis.text.x = element_text(angle = 45, hjust = 1) )
 
 
-##DREAM target gene expression, Fig. 3a
+##DREAM target gene expression, Fig. 4a
 lung_DREAM <- AddModuleScore(object = lung, features = gene_list_DREAM, name = "DREAM_score")
 
 DotPlot(lung_DREAM, features = "DREAM_score1", cols = "RdYlBu", scale.min = 0) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+##PAPC subcluster, Supplementary Fig. 8a
 
+PAPC <- subset(lung, idents = "Proliferation")
+
+pal <- brewer.pal(9, "YlOrRd")
+
+FeaturePlot_scCustom(seurat_object = PAPC,
+                     features = c("Sftpc", "Scgb1a1", "Krt5"),
+                     na_cutoff = 0.001,
+                     na_color = "lightgrey",
+                     colors_use = pal,
+                     num_columns = 3)
