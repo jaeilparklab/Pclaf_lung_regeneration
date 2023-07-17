@@ -4,6 +4,9 @@ library(dplyr)
 library(ggplot2)
 library(Matrix)
 library(ade4)
+library(scCustomize)
+library(RColorBrewer)
+library(viridis)
 
 ## Read matrix and create seurat object
 sciadv_data <- Read10X(data.dir = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/10X", gene.column = 1)
@@ -125,7 +128,7 @@ DimPlot(epi2)
 saveRDS(epi2, file = "sciadv_epi.rds")
 epi2 <- readRDS(file = "/Users/bkim6/Desktop/LAB/Seq/R/Human_lung_Sciadv/sciadv_epi.rds")
 
-## Extended Data Fig.1d
+## Fig.1d
 my_levels <- c("AT1", "Transitional AT2", "AT2", "SCGB3A2+/SCGB1A1+", "SCGB3A2+", 
                "Ciliated", "Differentiating Ciliated", "MUC5B+", "Proliferating", "Basal")
 
